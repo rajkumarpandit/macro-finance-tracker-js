@@ -1,0 +1,83 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions for common validations
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function hasUserId() {
+      return request.resource.data.userId != null;
+    }
+    
+    function isCurrentUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    // Daily food log - users can only read, write, and delete their own data
+    match /daily_food_log/{document=**} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId; // Prevent userId change
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // Food master rules - users can read all, but only edit their own unless item is public
+    match /food_calorie_master/{foodId} {
+      // Anyone authenticated can read all food items
+      allow read: if isSignedIn();
+      
+      // Users can create food items and must include their userId
+      allow create: if isSignedIn() && 
+                    request.resource.data.userId == request.auth.uid;
+      
+      // Users can only update or delete their own food items, and can't change the userId
+      allow update: if isSignedIn() && 
+                    resource.data.userId == request.auth.uid &&
+                    request.resource.data.userId == request.auth.uid; // Prevent userId change
+      
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    
+    // User profile data
+    match /users/{userId} {
+      allow read: if isCurrentUser(userId);
+      allow create, update: if isCurrentUser(userId);
+      allow delete: if false; // Prevent user deletion to avoid orphaned data
+    }
+    
+    // User goals collection - for storing personal fitness/nutrition goals
+    match /user_goals/{goalId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && 
+                    resource.data.userId == request.auth.uid && 
+                    request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Macro targets - personal macro nutrition targets
+    match /macro_targets/{targetId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && 
+                    resource.data.userId == request.auth.uid && 
+                    request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Admin collection - restricted to admin users only
+    match /admin/{document=**} {
+      // Admin access would require a custom claim or admin role in user document
+      allow read, write: if isSignedIn() && 
+                           (request.auth.token.admin == true || 
+                            exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+                            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isAdmin == true);
+    }
+  }
+}

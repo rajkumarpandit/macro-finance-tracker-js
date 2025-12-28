@@ -1,0 +1,186 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Helper functions for common validations
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    
+    // Note: isCurrentUser replaces the need for isOwner
+    function isCurrentUser(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+    
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.email == 'rajkumarpandit@gmail.com';
+    }
+    
+    // Daily expenses - users can only read, write, and delete their own data
+    match /daily_expenses/{expenseId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId; // Prevent userId change
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // Transactions - daily income and expense logs
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // Recurring expenses
+    match /recurring_expenses/{expenseId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // Expense heads - user-defined expense categories
+    match /expense_heads/{headId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // User API usage tracking - users can read and write their own usage data
+    match /user_api_usage/{usageId} {
+      allow read: if isSignedIn() && (
+        (resource != null && resource.data.userId == request.auth.uid) ||
+        usageId.split('_')[0] == request.auth.uid
+      );
+      allow write: if isSignedIn() && 
+        request.resource.data.userId == request.auth.uid &&
+        usageId.split('_')[0] == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+    
+    // Ledgers - monthly financial tracking ledgers
+    match /ledgers/{ledgerId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // Bank Accounts - user's bank account information
+    match /bank_accounts/{accountId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // Credit Cards - user's credit card information
+    match /credit_cards/{cardId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // Demat Accounts - user's demat/investment account information
+    match /demats/{dematId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // Loans - user's loan information
+    match /loans/{loanId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // Insurances - user's insurance policy information
+    match /insurances/{insuranceId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // Budgets - users can only access their own budget data
+    match /budgets/{budgetId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && 
+                    resource.data.userId == request.auth.uid &&
+                    request.resource.data.userId == request.auth.uid; // Prevent userId change
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Categories - personal expense categories
+    match /categories/{categoryId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && 
+                    resource.data.userId == request.auth.uid && 
+                    request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    
+    // User profile data
+    match /users/{userId} {
+      // Allow anyone to list users (for signup limit check - only reads createdAt field)
+      // Allow users to read their own data and admins to read all user data
+      allow read: if true;
+      
+      // Allow users to create/update their own data and admins to update any user
+      allow create, update: if isCurrentUser(userId) || isAdmin();
+      
+      // Allow users to delete their own account and admins to delete any user
+      allow delete: if isCurrentUser(userId) || isAdmin();
+    }
+    
+    // Admin collection - restricted to admin users only
+    match /admin/{document=**} {
+      allow read, write: if isAdmin();
+    }
+    
+    // Admin users collection - allows admins to manage the admin users list
+    match /admin_users/{email} {
+      // For reading the admin_users collection
+      allow read: if isSignedIn();
+      
+      // For initializing admin collection (matches config) and admin operations
+      allow write: if isAdmin();
+    }
+    
+    // App settings - maintenance mode and other app-wide settings
+    match /app_settings/{settingId} {
+      // Allow anyone to read settings (needed for signup limit check before authentication)
+      // This is safe as it only contains public configuration like limits and maintenance mode
+      allow read: if true;
+      
+      // Only admins can write/update settings
+      allow write: if isAdmin();
+    }
+    
+    // Exchange rates - publicly readable, only authenticated users can write
+    match /exchange_rates/{rateId} {
+      // Allow anyone to read exchange rates (needed for currency conversion)
+      allow read: if true;
+      
+      // Only authenticated users can update exchange rates
+      allow write: if isSignedIn();
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "name": "firestore-rules-tests",
+  "version": "1.0.0",
+  "description": "Tests for Firestore security rules",
+  "main": "firestore.rules.spec.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "dependencies": {
+    "@firebase/testing": "^0.20.11",
+    "jest": "^29.5.0"
+  }
+}

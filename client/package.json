@@ -1,0 +1,62 @@
+{
+  "name": "finance-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@craco/craco": "^7.1.0",
+    "@emotion/react": "^11.11.1",
+    "@emotion/styled": "^11.11.0",
+    "@google/generative-ai": "^0.24.1",
+    "@mui/icons-material": "^5.14.18",
+    "@mui/material": "^5.14.18",
+    "@mui/x-date-pickers": "^6.18.1",
+    "@testing-library/jest-dom": "^5.17.0",
+    "@testing-library/react": "^13.4.0",
+    "@testing-library/user-event": "^13.5.0",
+    "date-fns": "^2.30.0",
+    "dotenv": "^17.2.3",
+    "firebase": "^10.5.2",
+    "js-yaml": "^4.1.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.18.0",
+    "react-scripts": "5.0.1",
+    "recharts": "^2.9.3",
+    "web-vitals": "^2.1.4",
+    "yaml-loader": "^0.8.1"
+  },
+  "scripts": {
+    "start": "craco start",
+    "build": "cross-env GENERATE_SOURCEMAP=false craco build && npm run compress",
+    "build:win": "cross-env GENERATE_SOURCEMAP=false craco build",
+    "build:simple": "craco build",
+    "compress": "node scripts/compress.js",
+    "compress:unix": "gzip -9 build/static/js/*.js && gzip -9 build/static/css/*.css",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "analyze": "source-map-explorer 'build/static/js/*.js'"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "esm": "^3.2.25",
+    "source-map-explorer": "^2.5.3"
+  }
+}

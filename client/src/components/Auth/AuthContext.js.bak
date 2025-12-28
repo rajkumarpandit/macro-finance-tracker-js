@@ -1,0 +1,298 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { 
+  onAuthStateChanged, 
+  createUserWithEmailAndPassword, 
+  signInWithEmailAndPassword, 
+  signOut,
+  updateProfile,
+  browserLocalPersistence,
+  setPersistence,
+  getAdditionalUserInfo
+} from 'firebase/auth';
+import { doc, setDoc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { auth, db } from '../../firebase/firebase';
+import CryptoJS from 'crypto-js';
+
+const AuthContext = createContext();
+
+export function useAuth() {
+  return useContext(AuthContext);
+}
+
+export function AuthProvider({ children }) {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userDetails, setUserDetails] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState(null);
+
+  // Helper to encrypt the PIN
+  const encryptPin = (pin) => {
+    return CryptoJS.AES.encrypt(pin, 'secret-key').toString();
+  };
+
+  // Helper to decrypt the PIN
+  const decryptPin = (encryptedPin) => {
+    const bytes = CryptoJS.AES.decrypt(encryptedPin, 'secret-key');
+    return bytes.toString(CryptoJS.enc.Utf8);
+  };
+
+  // Signup function with name and PIN
+  async function signup(email, pin, displayName) {
+    if (!auth) {
+      console.error("Firebase Auth is not initialized");
+      throw new Error("Authentication service is unavailable. Please try again later.");
+    }
+
+    // Set local persistence to keep the user logged in
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch (persistenceError) {
+      console.warn("Failed to set auth persistence:", persistenceError);
+      // Continue anyway - this is not critical
+    }
+    
+    try {
+      console.log("Starting signup process for email:", email);
+      
+      // Make sure we have a valid PIN
+      if (!pin || pin.length < 6) {
+        throw new Error("PIN must be at least 6 digits");
+      }
+      
+      // Use PIN directly as the password - Firebase requires 6+ characters
+      // Since we validate PIN length above, this should work fine
+      const securePassword = pin;
+      
+      console.log("Attempting to create user with Firebase Auth");
+      const userCredential = await createUserWithEmailAndPassword(auth, email, securePassword);
+      console.log("User created successfully:", userCredential.user.uid);
+      const user = userCredential.user;
+
+      // Set display name in Firebase Auth profile
+      console.log("Setting display name in Firebase Auth:", displayName);
+      await updateProfile(user, { displayName });
+
+      if (db) {
+        // Store user details with encrypted PIN in Firestore
+        console.log("Storing user details in Firestore");
+        await setDoc(doc(db, 'users', user.uid), {
+          displayName, // Store the full name as entered during signup
+          email,
+          pin: encryptPin(pin), // Store encrypted PIN
+          createdAt: new Date().toISOString()
+        });
+        console.log("User data stored in Firestore successfully");
+        
+        // Update local user details state
+        setUserDetails({
+          displayName, // Set the display name immediately
+          email
+        });
+      } else {
+        console.warn("Firestore not available, user profile data not saved");
+        
+        // Still update the local state
+        setUserDetails({
+          displayName,
+          email
+        });
+      }
+      
+      console.log("User registration complete");
+      return user;
+    } catch (error) {
+      console.error("Signup error:", error.code, error.message);
+      
+      // Specific error handling
+      if (error.code === "auth/email-already-in-use") {
+        throw new Error("This email is already registered. Please use a different email or login.");
+      } else if (error.code === "auth/invalid-email") {
+        throw new Error("Please enter a valid email address.");
+      } else if (error.code === "auth/weak-password") {
+        throw new Error("Your PIN is too weak. Please use a stronger PIN.");
+      } else if (error.code === "auth/operation-not-allowed") {
+        throw new Error("Email/Password sign-up is not enabled in Firebase Console.");
+      } else if (error.code === "auth/network-request-failed") {
+        throw new Error("Network error. Please check your internet connection.");
+      } else if (error.code === "auth/configuration-not-found" || error.code === "auth/project-not-found") {
+        // This is our specific error case
+        console.error("Firebase project configuration error:", error);
+        throw new Error("Firebase project configuration not found. Check the Firebase Console settings.");
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  // Login function with email and PIN
+  async function login(email, pin) {
+    if (!auth) {
+      console.error("Firebase Auth is not initialized");
+      throw new Error("Authentication service is unavailable. Please try again later.");
+    }
+    
+    // Set local persistence to keep the user logged in
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+    } catch (persistenceError) {
+      console.warn("Failed to set auth persistence:", persistenceError);
+      // Continue anyway - this is not critical
+    }
+    
+    try {
+      console.log("Attempting login for email:", email);
+      
+      // Use the PIN directly as the password, for consistency with signup
+      const securePassword = pin;
+      
+      // Sign in with email and the secured password
+      const userCredential = await signInWithEmailAndPassword(auth, email, securePassword);
+      const user = userCredential.user;
+      console.log("User signed in successfully:", user.uid);
+      
+      if (db) {
+        // Get the user document to load user details and check if enabled
+        const userDoc = await getDoc(doc(db, 'users', user.uid));
+        
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          
+          // Check if user account is disabled
+          if (userData.isEnabled === false) {
+            // Sign out the user immediately
+            await signOut(auth);
+            throw new Error("This account has been disabled. Please contact an administrator.");
+          }
+          
+          // Update user details from Firestore
+          setUserDetails({
+            displayName: userData.displayName || user.displayName || email.split('@')[0],
+            email: userData.email || user.email,
+            isEnabled: userData.isEnabled !== false // Default to enabled if not specified
+          });
+        } else {
+          console.warn("User document not found in Firestore, creating basic profile");
+          // Create a basic user profile if one doesn't exist
+          await setDoc(doc(db, 'users', user.uid), {
+            displayName: user.displayName || email.split('@')[0],
+            email: user.email,
+            createdAt: new Date().toISOString()
+          });
+        } else {
+          // Update user details from Firestore
+          const userData = userDoc.data();
+          setUserDetails({
+            displayName: userData.displayName || user.displayName || email.split('@')[0],
+            email: userData.email || user.email
+          });
+        }
+      } else {
+        console.warn("Firestore not available, using basic user profile data");
+        // Use basic Auth user info if Firestore is not available
+        setUserDetails({
+          displayName: user.displayName || email.split('@')[0],
+          email: user.email
+        });
+      }
+      
+      return user;
+    } catch (error) {
+      console.error("Login error:", error.code, error.message);
+      
+      // Specific error handling
+      if (error.code === "auth/user-not-found") {
+        throw new Error("No account found with this email. Please sign up first.");
+      } else if (error.code === "auth/wrong-password") {
+        throw new Error("Incorrect PIN. Please try again.");
+      } else if (error.code === "auth/invalid-email") {
+        throw new Error("Please enter a valid email address.");
+      } else if (error.code === "auth/user-disabled") {
+        throw new Error("This account has been disabled. Please contact support.");
+      } else if (error.code === "auth/network-request-failed") {
+        throw new Error("Network error. Please check your internet connection.");
+      } else if (error.code === "auth/configuration-not-found" || error.code === "auth/project-not-found") {
+        console.error("Firebase project configuration error:", error);
+        throw new Error("Firebase project configuration not found. Check the Firebase Console settings.");
+      } else {
+        throw error;
+      }
+    }
+  }
+
+  function logout() {
+    setUserDetails(null);
+    return signOut(auth);
+  }
+
+  // Listen for auth state changes
+  useEffect(() => {
+    if (!auth) {
+      console.error("Firebase Auth is not initialized in useEffect");
+      setLoading(false);
+      return () => {};
+    }
+    
+    console.log("Setting up Firebase auth state listener");
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log("Auth state changed:", user ? `User: ${user.uid}` : "No user");
+      setCurrentUser(user);
+      
+      if (user) {
+        // Load user details from Firestore
+        if (db) {
+          try {
+            const userDoc = await getDoc(doc(db, 'users', user.uid));
+            if (userDoc.exists()) {
+              const userData = userDoc.data();
+              setUserDetails({
+                displayName: userData.displayName || user.displayName || "User",
+                email: userData.email || user.email
+              });
+            } else {
+              // Create a basic user profile if one doesn't exist
+              const defaultDisplayName = user.displayName || "User";
+              await setDoc(doc(db, 'users', user.uid), {
+                displayName: defaultDisplayName,
+                email: user.email,
+                createdAt: new Date().toISOString()
+              });
+              
+              setUserDetails({
+                displayName: defaultDisplayName,
+                email: user.email
+              });
+            }
+          } catch (error) {
+            console.error("Error loading user details:", error);
+          }
+        } else {
+          // Firestore not available, use data from Auth
+          setUserDetails({
+            displayName: user.displayName || "User",
+            email: user.email
+          });
+        }
+      } else {
+        setUserDetails(null);
+      }
+      
+      setLoading(false);
+    });
+
+    return unsubscribe;
+  }, []);
+
+  const value = {
+    currentUser,
+    userDetails,
+    signup,
+    login,
+    logout,
+  };
+
+  return (
+    <AuthContext.Provider value={value}>
+      {!loading && children}
+    </AuthContext.Provider>
+  );
+}

@@ -1,0 +1,51 @@
+Complete Command Reference for GitHub Repository Creation and Firebase Deployment
+GitHub Repository Setup Commands
+Initialize a Git repository in your project folder:
+git init
+
+
+Configure Git with your GitHub information:
+git config user.name "rajkumarpandit"
+git config user.email "rajkumarpandit@gmail.com"
+
+
+Add all files to the Git repository:
+git add .
+
+
+Make your first commit:
+git commit -m "Initial commit: Macro Tracker & Planner application"
+
+
+
+Add the GitHub repository as remote origin:
+git remote add origin https://github.com/rajkumarpandit/macro-tracker-planner-js.git
+
+
+Push your code to GitHub:
+git push -u origin master
+
+=====================================================================================================
+Firebase Initialization, Build and Deployment Commands
+Check Firebase CLI version:
+firebase --version
+
+
+Login to Firebase:
+firebase login
+
+
+List available Firebase projects:
+firebase projects:list
+
+
+Initialize Firebase hosting:
+firebase init hosting
+
+Build the React Application:
+cd client
+npm run build:win
+
+Deploy your application to Firebase hosting:
+firebase deploy --only hosting
+
