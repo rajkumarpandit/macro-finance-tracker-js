@@ -7,6 +7,8 @@ import {
   Paper,
   Tabs,
   Tab,
+  Card,
+  CardContent,
   Chip,
   IconButton,
   Alert,
@@ -17,6 +19,7 @@ import {
   Select,
   FormControl,
   InputLabel,
+  Divider,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -26,8 +29,7 @@ import {
   TableCell,
   TableContainer,
   TableHead,
-  TableRow,
-  Fab
+  TableRow
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -36,7 +38,6 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
 import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import AddIcon from '@mui/icons-material/Add';
 import { useAuth } from '../Auth/AuthContext';
 import { db } from '../../firebase/firebase';
 import { collection, addDoc, query, where, orderBy, getDocs, deleteDoc, doc, updateDoc, Timestamp, limit } from 'firebase/firestore';
@@ -49,7 +50,7 @@ import BookIcon from '@mui/icons-material/Book';
 function TabPanel({ children, value, index }) {
   return (
     <div role="tabpanel" hidden={value !== index}>
-      {value === index && <Box sx={{ pt: 3, backgroundColor: '#ffffff', borderRadius: 1 }}>{children}</Box>}
+      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
     </div>
   );
 }
@@ -164,8 +165,7 @@ function DailyExpenseLogPage() {
       const ledgerQuery = query(
         collection(db, 'ledgers'),
         where('userId', '==', currentUser.uid),
-        where('status', '==', 'open'),
-        limit(1)
+        where('status', '==', 'open')
       );
       const ledgerSnapshot = await getDocs(ledgerQuery);
       
@@ -185,10 +185,12 @@ function DailyExpenseLogPage() {
         // Set the first (most recent) as current
         setCurrentLedger(ledgers[0]);
       } else {
+        setOpenLedgers([]);
         setCurrentLedger(null);
       }
     } catch (error) {
       console.error('Error fetching open ledger:', error);
+      setOpenLedgers([]);
       setCurrentLedger(null);
     } finally {
       setLedgerLoading(false);
@@ -205,7 +207,11 @@ function DailyExpenseLogPage() {
       const recurringSnapshot = await getDocs(recurringQuery);
       const recurringList = [];
       recurringSnapshot.forEach((doc) => {
-        recurringList.push({ id: doc.id, ...doc.data() });
+        const data = doc.data();
+        // Only include periodic transactions (recurrenceType is 'periodic' or blank/undefined)
+        if (!data.recurrenceType || data.recurrenceType === 'periodic') {
+          recurringList.push({ id: doc.id, ...data });
+        }
       });
       setRecurringTransactions(recurringList);
     } catch (error) {
@@ -218,17 +224,15 @@ function DailyExpenseLogPage() {
       const templateQuery = query(
         collection(db, 'recurring_expenses'),
         where('userId', '==', currentUser.uid),
-        orderBy('transactionName', 'asc')
+        where('recurrenceType', '==', 'template')
       );
       const templateSnapshot = await getDocs(templateQuery);
       const templateList = [];
       templateSnapshot.forEach((doc) => {
-        const data = doc.data();
-        // Filter for templates only (client-side to avoid index requirement initially)
-        if (data.recurrenceType === 'template') {
-          templateList.push({ id: doc.id, ...data });
-        }
+        templateList.push({ id: doc.id, ...doc.data() });
       });
+      // Sort client-side to avoid composite index requirement
+      templateList.sort((a, b) => a.transactionName.localeCompare(b.transactionName));
       setTemplateTransactions(templateList);
     } catch (error) {
       console.error('Error fetching template transactions:', error);
@@ -467,105 +471,83 @@ function DailyExpenseLogPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentUser, currentLedger]);
 
-  // Auto-select default account when accounts/cards are loaded and payment mode is set
+  // Auto-select default account only on initial load when accounts are fetched
   useEffect(() => {
     if ((bankAccounts.length > 0 || creditCards.length > 0) && currentLedger) {
-      // Get account IDs that are part of the current open ledger
       const ledgerAccountIds = currentLedger.accountBalances?.map(ab => ab.accountId) || [];
       
-      // Manual tab
-      if (manualData.paymentMode && !manualData.accountId) {
-        if (manualData.paymentMode === 'Credit Card') {
-          const defaultCard = creditCards.find(card => card.isDefault && ledgerAccountIds.includes(card.id));
-          if (defaultCard) {
-            setManualData(prev => ({
-              ...prev,
-              accountId: defaultCard.id,
-              accountName: defaultCard.nickName
-            }));
-          }
-        } else if (['UPI', 'Cheque', 'Bank Transfer'].includes(manualData.paymentMode)) {
-          const defaultBank = bankAccounts.find(bank => bank.isDefault && ledgerAccountIds.includes(bank.id));
-          if (defaultBank) {
-            setManualData(prev => ({
-              ...prev,
-              accountId: defaultBank.id,
-              accountName: defaultBank.accountNickName
-            }));
+      // Manual tab - only set if empty using updater function to avoid stale closure
+      setManualData(prev => {
+        if (prev.paymentMode && !prev.accountId && prev.paymentMode !== 'Cash') {
+          if (prev.paymentMode === 'Credit Card') {
+            const defaultCard = creditCards.find(card => card.isDefault && ledgerAccountIds.includes(card.id));
+            if (defaultCard) {
+              return { ...prev, accountId: defaultCard.id, accountName: defaultCard.nickName };
+            }
+          } else if (['UPI', 'Cheque', 'Bank Transfer'].includes(prev.paymentMode)) {
+            const defaultBank = bankAccounts.find(bank => bank.isDefault && ledgerAccountIds.includes(bank.id));
+            if (defaultBank) {
+              return { ...prev, accountId: defaultBank.id, accountName: defaultBank.accountNickName };
+            }
           }
         }
-      }
+        return prev;
+      });
 
       // Income tab
-      if (incomeData.paymentMode && !incomeData.accountId) {
-        if (incomeData.paymentMode === 'Credit Card') {
-          const defaultCard = creditCards.find(card => card.isDefault && ledgerAccountIds.includes(card.id));
-          if (defaultCard) {
-            setIncomeData(prev => ({
-              ...prev,
-              accountId: defaultCard.id,
-              accountName: defaultCard.nickName
-            }));
-          }
-        } else if (['UPI', 'Cheque', 'Bank Transfer'].includes(incomeData.paymentMode)) {
-          const defaultBank = bankAccounts.find(bank => bank.isDefault && ledgerAccountIds.includes(bank.id));
-          if (defaultBank) {
-            setIncomeData(prev => ({
-              ...prev,
-              accountId: defaultBank.id,
-              accountName: defaultBank.accountNickName
-            }));
+      setIncomeData(prev => {
+        if (prev.paymentMode && !prev.accountId && prev.paymentMode !== 'Cash') {
+          if (prev.paymentMode === 'Credit Card') {
+            const defaultCard = creditCards.find(card => card.isDefault && ledgerAccountIds.includes(card.id));
+            if (defaultCard) {
+              return { ...prev, accountId: defaultCard.id, accountName: defaultCard.nickName };
+            }
+          } else if (['UPI', 'Cheque', 'Bank Transfer'].includes(prev.paymentMode)) {
+            const defaultBank = bankAccounts.find(bank => bank.isDefault && ledgerAccountIds.includes(bank.id));
+            if (defaultBank) {
+              return { ...prev, accountId: defaultBank.id, accountName: defaultBank.accountNickName };
+            }
           }
         }
-      }
+        return prev;
+      });
 
       // Recurring tab
-      if (recurringData.paymentMode && !recurringData.accountId) {
-        if (recurringData.paymentMode === 'Credit Card') {
-          const defaultCard = creditCards.find(card => card.isDefault && ledgerAccountIds.includes(card.id));
-          if (defaultCard) {
-            setRecurringData(prev => ({
-              ...prev,
-              accountId: defaultCard.id,
-              accountName: defaultCard.nickName
-            }));
-          }
-        } else if (['UPI', 'Cheque', 'Bank Transfer'].includes(recurringData.paymentMode)) {
-          const defaultBank = bankAccounts.find(bank => bank.isDefault && ledgerAccountIds.includes(bank.id));
-          if (defaultBank) {
-            setRecurringData(prev => ({
-              ...prev,
-              accountId: defaultBank.id,
-              accountName: defaultBank.accountNickName
-            }));
+      setRecurringData(prev => {
+        if (prev.paymentMode && !prev.accountId && prev.paymentMode !== 'Cash') {
+          if (prev.paymentMode === 'Credit Card') {
+            const defaultCard = creditCards.find(card => card.isDefault && ledgerAccountIds.includes(card.id));
+            if (defaultCard) {
+              return { ...prev, accountId: defaultCard.id, accountName: defaultCard.nickName };
+            }
+          } else if (['UPI', 'Cheque', 'Bank Transfer'].includes(prev.paymentMode)) {
+            const defaultBank = bankAccounts.find(bank => bank.isDefault && ledgerAccountIds.includes(bank.id));
+            if (defaultBank) {
+              return { ...prev, accountId: defaultBank.id, accountName: defaultBank.accountNickName };
+            }
           }
         }
-      }
+        return prev;
+      });
 
       // NLP Parsed tab
-      if (parsedData?.paymentMode && !parsedData.accountId) {
-        if (parsedData.paymentMode === 'Credit Card') {
-          const defaultCard = creditCards.find(card => card.isDefault && ledgerAccountIds.includes(card.id));
-          if (defaultCard) {
-            setParsedData(prev => ({
-              ...prev,
-              accountId: defaultCard.id,
-              accountName: defaultCard.nickName
-            }));
-          }
-        } else if (['UPI', 'Cheque', 'Bank Transfer'].includes(parsedData.paymentMode)) {
-          const defaultBank = bankAccounts.find(bank => bank.isDefault && ledgerAccountIds.includes(bank.id));
-          if (defaultBank) {
-            setParsedData(prev => ({
-              ...prev,
-              accountId: defaultBank.id,
-              accountName: defaultBank.accountNickName
-            }));
+      setParsedData(prev => {
+        if (prev?.paymentMode && !prev.accountId && prev.paymentMode !== 'Cash') {
+          if (prev.paymentMode === 'Credit Card') {
+            const defaultCard = creditCards.find(card => card.isDefault && ledgerAccountIds.includes(card.id));
+            if (defaultCard) {
+              return { ...prev, accountId: defaultCard.id, accountName: defaultCard.nickName };
+            }
+          } else if (['UPI', 'Cheque', 'Bank Transfer'].includes(prev.paymentMode)) {
+            const defaultBank = bankAccounts.find(bank => bank.isDefault && ledgerAccountIds.includes(bank.id));
+            if (defaultBank) {
+              return { ...prev, accountId: defaultBank.id, accountName: defaultBank.accountNickName };
+            }
           }
         }
-      }
+        return prev;
+      });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bankAccounts, creditCards, currentLedger]);
 
   const handleParseTransaction = async () => {
@@ -781,6 +763,12 @@ function DailyExpenseLogPage() {
           }
         }
         
+        // Auto-generate transaction description: "{Transaction Name} for {Month-YY}"
+        const currentDate = new Date();
+        const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const monthYear = `${monthNames[currentDate.getMonth()]}-${currentDate.getFullYear().toString().slice(-2)}`;
+        const autoDescription = `${selected.transactionName} for ${monthYear}`;
+        
         setRecurringData({
           transactionName: selected.transactionName,
           amount: selected.amount.toString(),
@@ -789,7 +777,7 @@ function DailyExpenseLogPage() {
           merchant: selected.merchant,
           date: new Date().toISOString().split('T')[0],
           paymentMode: paymentMode,
-          transactionDesc: selected.transactionDesc || '',
+          transactionDesc: autoDescription,
           expenseHead: selected.expenseHead || selected.type || 'Other',
           category: selected.category || 'Recurring',
           accountId: accountId,
@@ -817,12 +805,13 @@ function DailyExpenseLogPage() {
   const handleRecurringFieldChange = (field, value) => {
     if (field === 'paymentMode') {
       // When payment mode changes, auto-select default account/card
+      const ledgerAccountIds = currentLedger?.accountBalances?.map(ab => ab.accountId) || [];
       const newData = { ...recurringData, [field]: value };
       if (value === 'Cash') {
         newData.accountId = '';
         newData.accountName = '';
       } else if (value === 'Credit Card') {
-        const defaultCard = creditCards.find(card => card.isDefault);
+        const defaultCard = creditCards.find(card => card.isDefault && ledgerAccountIds.includes(card.id));
         if (defaultCard) {
           newData.accountId = defaultCard.id;
           newData.accountName = defaultCard.nickName;
@@ -831,7 +820,7 @@ function DailyExpenseLogPage() {
           newData.accountName = '';
         }
       } else if (['UPI', 'Cheque', 'Bank Transfer'].includes(value)) {
-        const defaultBank = bankAccounts.find(bank => bank.isDefault);
+        const defaultBank = bankAccounts.find(bank => bank.isDefault && ledgerAccountIds.includes(bank.id));
         if (defaultBank) {
           newData.accountId = defaultBank.id;
           newData.accountName = defaultBank.accountNickName;
@@ -989,24 +978,6 @@ function DailyExpenseLogPage() {
         severity: 'error'
       });
     }
-  };
-
-  const handleResetRecurringForm = () => {
-    setSelectedRecurringId('');
-    setRecurringData({
-      transactionName: '',
-      amount: '',
-      currency: 'INR',
-      type: 'Others',
-      merchant: '',
-      date: new Date().toISOString().split('T')[0],
-      paymentMode: 'UPI',
-      transactionDesc: '',
-      expenseHead: '',
-      category: 'Recurring',
-      accountId: '',
-      accountName: ''
-    });
   };
 
   // Template tab handlers
@@ -1270,12 +1241,13 @@ function DailyExpenseLogPage() {
   const handleManualFieldChange = (field, value) => {
     if (field === 'paymentMode') {
       // When payment mode changes, auto-select default account/card
+      const ledgerAccountIds = currentLedger?.accountBalances?.map(ab => ab.accountId) || [];
       const newData = { ...manualData, [field]: value };
       if (value === 'Cash') {
         newData.accountId = '';
         newData.accountName = '';
       } else if (value === 'Credit Card') {
-        const defaultCard = creditCards.find(card => card.isDefault);
+        const defaultCard = creditCards.find(card => card.isDefault && ledgerAccountIds.includes(card.id));
         if (defaultCard) {
           newData.accountId = defaultCard.id;
           newData.accountName = defaultCard.nickName;
@@ -1284,7 +1256,7 @@ function DailyExpenseLogPage() {
           newData.accountName = '';
         }
       } else if (['UPI', 'Cheque', 'Bank Transfer'].includes(value)) {
-        const defaultBank = bankAccounts.find(bank => bank.isDefault);
+        const defaultBank = bankAccounts.find(bank => bank.isDefault && ledgerAccountIds.includes(bank.id));
         if (defaultBank) {
           newData.accountId = defaultBank.id;
           newData.accountName = defaultBank.accountNickName;
@@ -1459,12 +1431,13 @@ function DailyExpenseLogPage() {
   const handleIncomeFieldChange = (field, value) => {
     if (field === 'paymentMode') {
       // When payment mode changes, auto-select default account/card
+      const ledgerAccountIds = currentLedger?.accountBalances?.map(ab => ab.accountId) || [];
       const newData = { ...incomeData, [field]: value };
       if (value === 'Cash') {
         newData.accountId = '';
         newData.accountName = '';
       } else if (value === 'Credit Card') {
-        const defaultCard = creditCards.find(card => card.isDefault);
+        const defaultCard = creditCards.find(card => card.isDefault && ledgerAccountIds.includes(card.id));
         if (defaultCard) {
           newData.accountId = defaultCard.id;
           newData.accountName = defaultCard.nickName;
@@ -1473,7 +1446,7 @@ function DailyExpenseLogPage() {
           newData.accountName = '';
         }
       } else if (['UPI', 'Cheque', 'Bank Transfer'].includes(value)) {
-        const defaultBank = bankAccounts.find(bank => bank.isDefault);
+        const defaultBank = bankAccounts.find(bank => bank.isDefault && ledgerAccountIds.includes(bank.id));
         if (defaultBank) {
           newData.accountId = defaultBank.id;
           newData.accountName = defaultBank.accountNickName;
@@ -1683,7 +1656,9 @@ function DailyExpenseLogPage() {
       expenseHead: transaction.expenseHead || '',
       amount: transaction.amount || '',
       currency: transaction.currency || 'INR',
-      paymentMode: transaction.paymentMode || 'UPI'
+      paymentMode: transaction.paymentMode || 'UPI',
+      accountId: transaction.accountId || '',
+      accountName: transaction.accountName || ''
     });
     setEditDialogOpen(true);
   };
@@ -1712,6 +1687,8 @@ function DailyExpenseLogPage() {
         amount: parseFloat(editingTransaction.amount),
         currency: editingTransaction.currency,
         paymentMode: editingTransaction.paymentMode,
+        accountId: editingTransaction.accountId || '',
+        accountName: editingTransaction.accountName || '',
         updatedAt: Timestamp.now()
       });
 
@@ -1738,12 +1715,13 @@ function DailyExpenseLogPage() {
     
     if (field === 'paymentMode') {
       // When payment mode changes, auto-select default account/card
+      const ledgerAccountIds = currentLedger?.accountBalances?.map(ab => ab.accountId) || [];
       const newData = { ...editingTransaction, [field]: value };
       if (value === 'Cash') {
         newData.accountId = '';
         newData.accountName = '';
       } else if (value === 'Credit Card') {
-        const defaultCard = creditCards.find(card => card.isDefault);
+        const defaultCard = creditCards.find(card => card.isDefault && ledgerAccountIds.includes(card.id));
         if (defaultCard) {
           newData.accountId = defaultCard.id;
           newData.accountName = defaultCard.nickName;
@@ -1752,7 +1730,7 @@ function DailyExpenseLogPage() {
           newData.accountName = '';
         }
       } else if (['UPI', 'Cheque', 'Bank Transfer'].includes(value)) {
-        const defaultBank = bankAccounts.find(bank => bank.isDefault);
+        const defaultBank = bankAccounts.find(bank => bank.isDefault && ledgerAccountIds.includes(bank.id));
         if (defaultBank) {
           newData.accountId = defaultBank.id;
           newData.accountName = defaultBank.accountNickName;
@@ -1778,39 +1756,62 @@ function DailyExpenseLogPage() {
   };
 
   return (
-    <Box sx={{ pb: 10, position: 'relative' }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <ReceiptLongIcon sx={{ fontSize: 24, color: '#42a5f5' }} />
-          <Typography variant="h6" fontWeight="700" sx={{ fontSize: '1.1rem' }}>
-            Add Transaction
+    <Box sx={{ pb: 10 }}>
+      {/* Header with Ledger Name */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <ReceiptLongIcon sx={{ fontSize: { xs: 28, sm: 36 }, color: 'primary.main' }} />
+          <Typography variant="h4" fontWeight="700" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+            Record Transaction
           </Typography>
         </Box>
         
-        {/* Ledger Display */}
+        {/* Current Ledger Display */}
         {ledgerLoading ? (
-          <CircularProgress size={16} />
+          <CircularProgress size={20} />
+        ) : openLedgers.length > 1 ? (
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <Select
+              value={currentLedger?.id || ''}
+              onChange={(e) => {
+                const selected = openLedgers.find(l => l.id === e.target.value);
+                setCurrentLedger(selected);
+              }}
+              displayEmpty
+              sx={{
+                fontWeight: 600,
+                fontSize: { xs: '0.75rem', sm: '0.875rem' }
+              }}
+            >
+              {openLedgers.map((ledger) => (
+                <MenuItem key={ledger.id} value={ledger.id}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <BookIcon fontSize="small" />
+                    {ledger.name}
+                  </Box>
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         ) : currentLedger ? (
           <Chip
-            icon={<BookIcon sx={{ fontSize: 16 }} />}
+            icon={<BookIcon />}
             label={currentLedger.name}
-            size="small"
+            color="primary"
             sx={{
               fontWeight: 600,
-              fontSize: '0.75rem',
-              height: 28,
-              bgcolor: '#42a5f5',
-              color: '#fff',
-              '& .MuiChip-icon': { color: '#fff' }
+              fontSize: { xs: '0.75rem', sm: '0.875rem' },
+              px: 1
             }}
           />
         ) : (
           <Chip
-            label="No Ledger"
-            size="small"
+            label="No Open Ledger"
             color="error"
-            sx={{ fontSize: '0.75rem', height: 28 }}
+            sx={{
+              fontWeight: 600,
+              fontSize: { xs: '0.75rem', sm: '0.875rem' }
+            }}
           />
         )}
       </Box>
@@ -1822,8 +1823,8 @@ function DailyExpenseLogPage() {
         </Alert>
       )}
 
-      {/* Compact Mobile-First Tabs */}
-      <Paper elevation={1} sx={{ mb: 2 }}>
+      {/* Tabs */}
+      <Paper elevation={0} sx={{ borderRadius: 2, border: '1px solid #e0e0e0', mb: 3 }}>
         <Tabs
           value={tabValue}
           onChange={(e, newValue) => {
@@ -1834,31 +1835,25 @@ function DailyExpenseLogPage() {
           scrollButtons="auto"
           allowScrollButtonsMobile
           sx={{
-            backgroundColor: '#ffffff',
-            borderRadius: { xs: 0, sm: 1 },
-            minHeight: { xs: 42, sm: 48 },
+            borderBottom: 1,
+            borderColor: 'divider',
             '& .MuiTab-root': { 
               textTransform: 'none', 
               fontWeight: 600, 
-              fontSize: { xs: '0.8rem', sm: '0.9rem' },
-              minWidth: { xs: 60, sm: 80 },
-              minHeight: { xs: 42, sm: 48 },
-              px: { xs: 1.5, sm: 2 },
-              py: { xs: 1, sm: 1.5 }
+              fontSize: { xs: '0.875rem', sm: '1rem' },
+              minWidth: { xs: 'auto', sm: 120 },
+              px: { xs: 2, sm: 3 }
             },
-            '& .Mui-selected': { color: '#616161' },
-            '& .MuiTabs-indicator': { 
-              backgroundColor: '#616161',
-              height: 3
-            }
+            '& .Mui-selected': { color: '#ff9a56' },
+            '& .MuiTabs-indicator': { backgroundColor: '#ff9a56' }
           }}
         >
-          <Tab label="✨ NLP" />
-          <Tab label="📋 TMPL" />
-          <Tab label="✏️ MNL" />
-          <Tab label="🔁 RCNG" />
+          <Tab label="NLP" />
+          <Tab label="TMPL" />
+          <Tab label="MNL" />
+          <Tab label="RCNG" />
           <Tab 
-            label="💰 INCM" 
+            label="INCM" 
             sx={{ 
               color: '#4caf50 !important',
               '&.Mui-selected': { 
@@ -1868,13 +1863,12 @@ function DailyExpenseLogPage() {
             }}
           />
         </Tabs>
-      </Paper>
 
         {/* MANUAL TRANSACTION TAB */}
         <TabPanel value={tabValue} index={2}>
           <Box sx={{ p: { xs: 2, sm: 3 }, pt: { xs: 1, sm: 2 } }}>
             <Grid container spacing={2}>
-              {/* Row 1: Date and Category */}
+              {/* Row 1: Date */}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -1883,7 +1877,13 @@ function DailyExpenseLogPage() {
                   value={manualData.date}
                   onChange={(e) => handleManualFieldChange('date', e.target.value)}
                   InputLabelProps={{ shrink: true }}
-                  size="small"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 2,
+                      '&:hover fieldset': { borderColor: '#ff9a56' },
+                      '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                    }
+                  }}
                 />
               </Grid>
 
@@ -1896,18 +1896,28 @@ function DailyExpenseLogPage() {
                   value={manualData.amount}
                   onChange={(e) => handleManualFieldChange('amount', e.target.value)}
                   inputProps={{ min: 0, step: 0.01 }}
-                  size="small"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 2,
+                      '&:hover fieldset': { borderColor: '#ff9a56' },
+                      '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                    }
+                  }}
                 />
               </Grid>
 
-              {/* Row 4: Expense Head */}
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth size="small">
+                <FormControl fullWidth>
                   <InputLabel>Currency</InputLabel>
                   <Select
                     value={manualData.currency}
                     label="Currency"
                     onChange={(e) => handleManualFieldChange('currency', e.target.value)}
+                    sx={{
+                      borderRadius: 2,
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
+                    }}
                   >
                     {currencies.map(curr => (
                       <MenuItem key={curr} value={curr}>{curr}</MenuItem>
@@ -1916,14 +1926,19 @@ function DailyExpenseLogPage() {
                 </FormControl>
               </Grid>
 
-              {/* Row 6: Payment Mode */}
+              {/* Row 3: Payment Mode */}
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth size="small">
+                <FormControl fullWidth>
                   <InputLabel>Payment Mode</InputLabel>
                   <Select
                     value={manualData.paymentMode}
                     label="Payment Mode"
                     onChange={(e) => handleManualFieldChange('paymentMode', e.target.value)}
+                    sx={{
+                      borderRadius: 2,
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
+                    }}
                   >
                     {PAYMENT_MODES.map(mode => (
                       <MenuItem key={mode} value={mode}>{mode}</MenuItem>
@@ -1935,7 +1950,7 @@ function DailyExpenseLogPage() {
               {/* Bank Account / Credit Card Dropdown */}
               {shouldShowAccountDropdown(manualData.paymentMode) && (
                 <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth size="small">
+                  <FormControl fullWidth>
                     <InputLabel>
                       {manualData.paymentMode === 'Credit Card' ? 'Credit Card' : 'Bank Account'}
                     </InputLabel>
@@ -1946,8 +1961,18 @@ function DailyExpenseLogPage() {
                         const selectedId = e.target.value;
                         const accounts = getAvailableAccounts(manualData.paymentMode);
                         const selected = accounts.find(acc => acc.id === selectedId);
-                        handleManualFieldChange('accountId', selectedId);
-                        handleManualFieldChange('accountName', selected ? (selected.accountNickName || selected.nickName) : '');
+                        
+                        // Update both accountId and accountName in a single state update
+                        setManualData(prev => ({
+                          ...prev,
+                          accountId: selectedId,
+                          accountName: selected ? (selected.accountNickName || selected.nickName) : ''
+                        }));
+                      }}
+                      sx={{
+                        borderRadius: 2,
+                        '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                       }}
                     >
                       <MenuItem value="">
@@ -1971,18 +1996,29 @@ function DailyExpenseLogPage() {
                   value={manualData.transactionDesc}
                   onChange={(e) => handleManualFieldChange('transactionDesc', e.target.value)}
                   placeholder="e.g., Bought groceries from BigMarket"
-                  size="small"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 2,
+                      '&:hover fieldset': { borderColor: '#ff9a56' },
+                      '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                    }
+                  }}
                 />
               </Grid>
 
               {/* Row 5: Expense Head */}
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth size="small">
+                <FormControl fullWidth>
                   <InputLabel>Expense Head</InputLabel>
                   <Select
                     value={manualData.expenseHead}
                     label="Expense Head"
                     onChange={(e) => handleManualFieldChange('expenseHead', e.target.value)}
+                    sx={{
+                      borderRadius: 2,
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
+                    }}
                   >
                     <MenuItem value="">
                       <em>Select Expense Head</em>
@@ -2024,15 +2060,14 @@ function DailyExpenseLogPage() {
                     fullWidth
                     onClick={handleSaveManualTransaction}
                     sx={{
-                      background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
-                      color: '#ffffff !important',
+                      background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
                       py: 1.5,
                       borderRadius: 2,
                       textTransform: 'none',
                       fontSize: '1rem',
                       fontWeight: 600,
                       '&:hover': {
-                        background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important',
+                        background: 'linear-gradient(135deg, #ff9a56 0%, #ff6f00 100%)',
                       }
                     }}
                   >
@@ -2041,16 +2076,19 @@ function DailyExpenseLogPage() {
                   <Button
                     variant="outlined"
                     onClick={handleResetManualForm}
-                    size="medium"
                     sx={{
+                      py: 1.5,
+                      px: 4,
+                      borderRadius: 2,
                       textTransform: 'none',
+                      fontSize: '1rem',
                       fontWeight: 600,
-                      borderColor: '#616161',
-                      color: '#616161',
-                      minWidth: '100px',
+                      borderColor: '#ff9a56',
+                      color: '#ff9a56',
+                      minWidth: '120px',
                       '&:hover': {
-                        borderColor: '#212121',
-                        bgcolor: '#f5f5f5'
+                        borderColor: '#ff6f00',
+                        bgcolor: '#fff3e0'
                       }
                     }}
                   >
@@ -2080,8 +2118,8 @@ function DailyExpenseLogPage() {
                     mb: 2,
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 2,
-                      '&:hover fieldset': { borderColor: '#616161' },
-                      '&.Mui-focused fieldset': { borderColor: '#616161' }
+                      '&:hover fieldset': { borderColor: '#ff9a56' },
+                      '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                     }
                   }}
                 />
@@ -2089,24 +2127,19 @@ function DailyExpenseLogPage() {
                 <Box sx={{ display: 'flex', gap: 2 }}>
                   <Button
                     variant="contained"
-                    endIcon={loading ? <CircularProgress size={20} sx={{ color: '#fff' }} /> : <SendIcon sx={{ color: '#fff' }} />}
+                    endIcon={loading ? <CircularProgress size={20} color="inherit" /> : <SendIcon />}
                     onClick={handleParseTransaction}
                     disabled={loading || !inputText.trim()}
                     fullWidth
                     sx={{
-                      background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
-                      color: '#ffffff !important',
+                      background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
                       py: 1.5,
                       borderRadius: 2,
                       textTransform: 'none',
                       fontSize: '1rem',
                       fontWeight: 600,
                       '&:hover': {
-                        background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important',
-                      },
-                      '&.Mui-disabled': {
-                        background: '#bdbdbd !important',
-                        color: '#ffffff !important',
+                        background: 'linear-gradient(135deg, #ff9a56 0%, #ff6f00 100%)',
                       }
                     }}
                   >
@@ -2123,12 +2156,12 @@ function DailyExpenseLogPage() {
                       textTransform: 'none',
                       fontSize: '1rem',
                       fontWeight: 600,
-                      borderColor: '#616161',
-                      color: '#616161',
+                      borderColor: '#ff9a56',
+                      color: '#ff9a56',
                       minWidth: '100px',
                       '&:hover': {
-                        borderColor: '#212121',
-                        bgcolor: '#f5f5f5'
+                        borderColor: '#ff6f00',
+                        bgcolor: '#fff3e0'
                       }
                     }}
                   >
@@ -2147,15 +2180,15 @@ function DailyExpenseLogPage() {
                     size="small"
                     startIcon={<RefreshIcon />}
                     onClick={handleClearParsedData}
-                    sx={{ color: '#616161', textTransform: 'none' }}
+                    sx={{ color: '#ff9a56', textTransform: 'none' }}
                   >
                     Clear
                   </Button>
                 </Box>
 
                 <Grid container spacing={2}>
-                  {/* Row 1: Date and Category */}
-                  <Grid item xs={6}>
+                  {/* Row 1: Date */}
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Date"
@@ -2163,56 +2196,57 @@ function DailyExpenseLogPage() {
                       value={parsedData.date || new Date().toISOString().split('T')[0]}
                       onChange={(e) => handleParsedFieldChange('date', e.target.value)}
                       InputLabelProps={{ shrink: true }}
-                      size="small"
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
-                          '&:hover fieldset': { borderColor: '#616161' },
-                          '&.Mui-focused fieldset': { borderColor: '#616161' }
+                          '&:hover fieldset': { borderColor: '#ff9a56' },
+                          '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                         }
                       }}
                     />
                   </Grid>
 
-                  <Grid item xs={6}>
+                  {/* Row 2: Amount and Currency */}
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Amount"
                       type="number"
                       value={parsedData.amount}
                       onChange={(e) => handleParsedFieldChange('amount', e.target.value)}
-                      size="small"
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
-                          bgcolor: '#f5f5f5'
+                          '&:hover fieldset': { borderColor: '#ff9a56' },
+                          '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                         }
                       }}
                     />
                   </Grid>
 
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
+                    <FormControl fullWidth>
                       <InputLabel>Currency</InputLabel>
                       <Select
-                        value={parsedData.type}
-                        label="Transaction Type"
-                        onChange={(e) => handleParsedFieldChange('type', e.target.value)}
+                        value={parsedData.currency || 'INR'}
+                        label="Currency"
+                        onChange={(e) => handleParsedFieldChange('currency', e.target.value)}
                         sx={{
                           borderRadius: 2,
-                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                         }}
                       >
-                        <MenuItem value="expense">Expense</MenuItem>
-                        <MenuItem value="income">Income</MenuItem>
+                        {currencies.map(curr => (
+                          <MenuItem key={curr} value={curr}>{curr}</MenuItem>
+                        ))}
                       </Select>
                     </FormControl>
                   </Grid>
 
                   {/* Row 3: Payment Mode */}
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
+                    <FormControl fullWidth>
                       <InputLabel>Payment Mode</InputLabel>
                       <Select
                         value={parsedData.paymentMode}
@@ -2220,8 +2254,8 @@ function DailyExpenseLogPage() {
                         onChange={(e) => handleParsedFieldChange('paymentMode', e.target.value)}
                         sx={{
                           borderRadius: 2,
-                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                         }}
                       >
                         {PAYMENT_MODES.map(mode => (
@@ -2234,7 +2268,7 @@ function DailyExpenseLogPage() {
                   {/* Bank Account / Credit Card Dropdown */}
                   {shouldShowAccountDropdown(parsedData.paymentMode) && (
                     <Grid item xs={6}>
-                      <FormControl fullWidth size="small">
+                      <FormControl fullWidth>
                         <InputLabel>
                           {parsedData.paymentMode === 'Credit Card' ? 'Credit Card' : 'Bank Account'}
                         </InputLabel>
@@ -2255,8 +2289,8 @@ function DailyExpenseLogPage() {
                           }}
                           sx={{
                             borderRadius: 2,
-                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                           }}
                         >
                           <MenuItem value="">
@@ -2280,12 +2314,11 @@ function DailyExpenseLogPage() {
                       value={parsedData.transactionDesc || ''}
                       onChange={(e) => handleParsedFieldChange('transactionDesc', e.target.value)}
                       placeholder="e.g., BigMarket, groceries"
-                      size="small"
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
-                          '&:hover fieldset': { borderColor: '#616161' },
-                          '&.Mui-focused fieldset': { borderColor: '#616161' }
+                          '&:hover fieldset': { borderColor: '#ff9a56' },
+                          '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                         }
                       }}
                     />
@@ -2293,7 +2326,7 @@ function DailyExpenseLogPage() {
 
                   {/* Row 5: Expense Head */}
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
+                    <FormControl fullWidth>
                       <InputLabel>Expense Head</InputLabel>
                       <Select
                         value={parsedData.expenseHead || ''}
@@ -2301,8 +2334,8 @@ function DailyExpenseLogPage() {
                         onChange={(e) => handleParsedFieldChange('expenseHead', e.target.value)}
                         sx={{
                           borderRadius: 2,
-                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                         }}
                       >
                         <MenuItem value="">
@@ -2342,15 +2375,16 @@ function DailyExpenseLogPage() {
                   variant="contained"
                   fullWidth
                   onClick={handleSaveTransaction}
-                  size="medium"
                   sx={{
                     mt: 3,
-                    background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
-                    color: '#ffffff !important',
+                    background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
+                    py: 1.5,
+                    borderRadius: 2,
                     textTransform: 'none',
+                    fontSize: '1rem',
                     fontWeight: 600,
                     '&:hover': {
-                      background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important',
+                      background: 'linear-gradient(135deg, #ff9a56 0%, #ff6f00 100%)',
                     }
                   }}
                 >
@@ -2363,11 +2397,11 @@ function DailyExpenseLogPage() {
 
         {/* TEMPLATE EXPENSES TAB */}
         <TabPanel value={tabValue} index={1}>
-          <Box sx={{ p: { xs: 2, sm: 3 }, pt: { xs: 1, sm: 2 } }}>
+          <Box sx={{ p: { xs: 2, sm: 3 } }}>
             <Grid container spacing={2}>
               {/* Select Template Transaction */}
               <Grid item xs={12}>
-                <FormControl fullWidth size="small">
+                <FormControl fullWidth>
                   <InputLabel>Select Template Transaction</InputLabel>
                   <Select
                     value={selectedTemplateId}
@@ -2375,8 +2409,8 @@ function DailyExpenseLogPage() {
                     onChange={handleTemplateSelect}
                     sx={{
                       borderRadius: 2,
-                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                     }}
                   >
                     <MenuItem value="">
@@ -2402,12 +2436,11 @@ function DailyExpenseLogPage() {
                       value={templateData.date}
                       onChange={(e) => handleTemplateFieldChange('date', e.target.value)}
                       InputLabelProps={{ shrink: true }}
-                      size="small"
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
-                          '&:hover fieldset': { borderColor: '#616161' },
-                          '&.Mui-focused fieldset': { borderColor: '#616161' }
+                          '&:hover fieldset': { borderColor: '#ff9a56' },
+                          '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                         }
                       }}
                     />
@@ -2422,18 +2455,17 @@ function DailyExpenseLogPage() {
                       value={templateData.amount}
                       onChange={(e) => handleTemplateFieldChange('amount', e.target.value)}
                       inputProps={{ min: 0, step: 0.01 }}
-                      size="small"
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
-                          '&:hover fieldset': { borderColor: '#616161' },
-                          '&.Mui-focused fieldset': { borderColor: '#616161' }
+                          '&:hover fieldset': { borderColor: '#ff9a56' },
+                          '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                         }
                       }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
+                    <FormControl fullWidth>
                       <InputLabel>Currency</InputLabel>
                       <Select
                         value={templateData.currency}
@@ -2441,8 +2473,8 @@ function DailyExpenseLogPage() {
                         onChange={(e) => handleTemplateFieldChange('currency', e.target.value)}
                         sx={{
                           borderRadius: 2,
-                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                         }}
                       >
                         <MenuItem value="INR">INR</MenuItem>
@@ -2456,7 +2488,7 @@ function DailyExpenseLogPage() {
 
                   {/* Row 3: Payment Mode */}
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
+                    <FormControl fullWidth>
                       <InputLabel>Payment Mode</InputLabel>
                       <Select
                         value={templateData.paymentMode}
@@ -2464,8 +2496,8 @@ function DailyExpenseLogPage() {
                         onChange={(e) => handleTemplateFieldChange('paymentMode', e.target.value)}
                         sx={{
                           borderRadius: 2,
-                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                         }}
                       >
                         {PAYMENT_MODES.map(mode => (
@@ -2478,7 +2510,7 @@ function DailyExpenseLogPage() {
                   {/* Bank Account / Credit Card Dropdown */}
                   {shouldShowAccountDropdown(templateData.paymentMode) && (
                     <Grid item xs={12} sm={6}>
-                      <FormControl fullWidth size="small">
+                      <FormControl fullWidth>
                         <InputLabel>
                           {templateData.paymentMode === 'Credit Card' ? 'Credit Card' : 'Bank Account'}
                         </InputLabel>
@@ -2499,8 +2531,8 @@ function DailyExpenseLogPage() {
                           }}
                           sx={{
                             borderRadius: 2,
-                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                           }}
                         >
                           <MenuItem value="">
@@ -2524,12 +2556,11 @@ function DailyExpenseLogPage() {
                       value={templateData.transactionDesc}
                       onChange={(e) => handleTemplateFieldChange('transactionDesc', e.target.value)}
                       placeholder="e.g., BigBasket grocery, Licious meat"
-                      size="small"
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
-                          '&:hover fieldset': { borderColor: '#616161' },
-                          '&.Mui-focused fieldset': { borderColor: '#616161' }
+                          '&:hover fieldset': { borderColor: '#ff9a56' },
+                          '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                         }
                       }}
                     />
@@ -2537,7 +2568,7 @@ function DailyExpenseLogPage() {
 
                   {/* Row 5: Expense Head */}
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
+                    <FormControl fullWidth>
                       <InputLabel>Expense Head</InputLabel>
                       <Select
                         value={templateData.expenseHead}
@@ -2545,8 +2576,8 @@ function DailyExpenseLogPage() {
                         onChange={(e) => handleTemplateFieldChange('expenseHead', e.target.value)}
                         sx={{
                           borderRadius: 2,
-                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                         }}
                       >
                         <MenuItem value="">
@@ -2588,14 +2619,15 @@ function DailyExpenseLogPage() {
                         variant="contained"
                         fullWidth
                         onClick={handleSaveTemplateExpense}
-                        size="medium"
                         sx={{
-                          background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
-                          color: '#ffffff !important',
+                          background: 'linear-gradient(45deg, #ff9a56 30%, #ff6b35 90%)',
+                          py: 1.5,
+                          borderRadius: 2,
                           textTransform: 'none',
+                          fontSize: '1rem',
                           fontWeight: 600,
                           '&:hover': {
-                            background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important',
+                            background: 'linear-gradient(45deg, #9c27b0 30%, #6a1b9a 90%)',
                           }
                         }}
                       >
@@ -2611,8 +2643,8 @@ function DailyExpenseLogPage() {
                           fontSize: '1rem',
                           fontWeight: 600,
                           minWidth: '120px',
-                          borderColor: '#424242',
-                          color: '#424242',
+                          borderColor: '#ff6b35',
+                          color: '#ff6b35',
                           '&:hover': {
                             borderColor: '#9c27b0',
                             color: '#9c27b0',
@@ -2632,11 +2664,11 @@ function DailyExpenseLogPage() {
 
         {/* RECURRING EXPENSES TAB */}
         <TabPanel value={tabValue} index={3}>
-          <Box sx={{ p: { xs: 2, sm: 3 }, pt: { xs: 1, sm: 2 } }}>
+          <Box sx={{ p: { xs: 2, sm: 3 } }}>
             <Grid container spacing={2}>
               {/* Select Recurring Transaction Template */}
               <Grid item xs={12}>
-                <FormControl fullWidth size="small">
+                <FormControl fullWidth>
                   <InputLabel>Select Recurring Transaction</InputLabel>
                   <Select
                     value={selectedRecurringId}
@@ -2644,8 +2676,8 @@ function DailyExpenseLogPage() {
                     onChange={handleRecurringSelect}
                     sx={{
                       borderRadius: 2,
-                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                     }}
                   >
                     <MenuItem value="">
@@ -2662,7 +2694,7 @@ function DailyExpenseLogPage() {
 
               {selectedRecurringId && (
                 <>
-                  {/* Row 1: Date & Category (read-only from template) */}
+                  {/* Row 1: Date */}
                   <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
@@ -2671,48 +2703,17 @@ function DailyExpenseLogPage() {
                       value={recurringData.date}
                       onChange={(e) => handleRecurringFieldChange('date', e.target.value)}
                       InputLabelProps={{ shrink: true }}
-                      size="small"
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
-                          '&:hover fieldset': { borderColor: '#616161' },
-                          '&.Mui-focused fieldset': { borderColor: '#616161' }
-                        }
-                      }}
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Category"
-                      value={recurringData.category}
-                      disabled
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          borderRadius: 2,
-                          bgcolor: '#f5f5f5'
+                          '&:hover fieldset': { borderColor: '#ff9a56' },
+                          '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                         }
                       }}
                     />
                   </Grid>
 
-                  {/* Row 2: Merchant (read-only) */}
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      fullWidth
-                      label="Merchant"
-                      value={recurringData.merchant}
-                      disabled
-                      sx={{
-                        '& .MuiOutlinedInput-root': {
-                          borderRadius: 2,
-                          bgcolor: '#f5f5f5'
-                        }
-                      }}
-                    />
-                  </Grid>
-
-                  {/* Row 3: Amount & Currency */}
+                  {/* Row 2: Amount & Currency */}
                   <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
@@ -2721,18 +2722,17 @@ function DailyExpenseLogPage() {
                       value={recurringData.amount}
                       onChange={(e) => handleRecurringFieldChange('amount', e.target.value)}
                       inputProps={{ min: 0, step: 0.01 }}
-                      size="small"
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
-                          '&:hover fieldset': { borderColor: '#616161' },
-                          '&.Mui-focused fieldset': { borderColor: '#616161' }
+                          '&:hover fieldset': { borderColor: '#ff9a56' },
+                          '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                         }
                       }}
                     />
                   </Grid>
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
+                    <FormControl fullWidth>
                       <InputLabel>Currency</InputLabel>
                       <Select
                         value={recurringData.currency}
@@ -2740,8 +2740,8 @@ function DailyExpenseLogPage() {
                         onChange={(e) => handleRecurringFieldChange('currency', e.target.value)}
                         sx={{
                           borderRadius: 2,
-                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                         }}
                       >
                         <MenuItem value="INR">INR</MenuItem>
@@ -2753,9 +2753,9 @@ function DailyExpenseLogPage() {
                     </FormControl>
                   </Grid>
 
-                  {/* Row 4: Payment Mode */}
+                  {/* Row 3: Payment Mode */}
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
+                    <FormControl fullWidth>
                       <InputLabel>Payment Mode</InputLabel>
                       <Select
                         value={recurringData.paymentMode}
@@ -2763,8 +2763,8 @@ function DailyExpenseLogPage() {
                         onChange={(e) => handleRecurringFieldChange('paymentMode', e.target.value)}
                         sx={{
                           borderRadius: 2,
-                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                         }}
                       >
                         {PAYMENT_MODES.map(mode => (
@@ -2777,7 +2777,7 @@ function DailyExpenseLogPage() {
                   {/* Bank Account / Credit Card Dropdown */}
                   {shouldShowAccountDropdown(recurringData.paymentMode) && (
                     <Grid item xs={12} sm={6}>
-                      <FormControl fullWidth size="small">
+                      <FormControl fullWidth>
                         <InputLabel>
                           {recurringData.paymentMode === 'Credit Card' ? 'Credit Card' : 'Bank Account'}
                         </InputLabel>
@@ -2788,13 +2788,18 @@ function DailyExpenseLogPage() {
                             const selectedId = e.target.value;
                             const accounts = getAvailableAccounts(recurringData.paymentMode);
                             const selected = accounts.find(acc => acc.id === selectedId);
-                            handleRecurringFieldChange('accountId', selectedId);
-                            handleRecurringFieldChange('accountName', selected ? (selected.accountNickName || selected.nickName) : '');
+                            
+                            // Update both accountId and accountName in a single state update
+                            setRecurringData(prev => ({
+                              ...prev,
+                              accountId: selectedId,
+                              accountName: selected ? (selected.accountNickName || selected.nickName) : ''
+                            }));
                           }}
                           sx={{
                             borderRadius: 2,
-                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                            '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                            '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                           }}
                         >
                           <MenuItem value="">
@@ -2810,7 +2815,7 @@ function DailyExpenseLogPage() {
                     </Grid>
                   )}
 
-                  {/* Row 5: Transaction Description */}
+                  {/* Row 4: Transaction Description */}
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
@@ -2818,20 +2823,19 @@ function DailyExpenseLogPage() {
                       value={recurringData.transactionDesc}
                       onChange={(e) => handleRecurringFieldChange('transactionDesc', e.target.value)}
                       placeholder="e.g., Monthly electricity bill, rent payment"
-                      size="small"
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
-                          '&:hover fieldset': { borderColor: '#616161' },
-                          '&.Mui-focused fieldset': { borderColor: '#616161' }
+                          '&:hover fieldset': { borderColor: '#ff9a56' },
+                          '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                         }
                       }}
                     />
                   </Grid>
 
-                  {/* Row 6: Expense Head */}
+                  {/* Row 5: Expense Head */}
                   <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
+                    <FormControl fullWidth>
                       <InputLabel>Expense Head</InputLabel>
                       <Select
                         value={recurringData.expenseHead}
@@ -2839,8 +2843,8 @@ function DailyExpenseLogPage() {
                         onChange={(e) => handleRecurringFieldChange('expenseHead', e.target.value)}
                         sx={{
                           borderRadius: 2,
-                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                         }}
                       >
                         <MenuItem value="">
@@ -2853,48 +2857,48 @@ function DailyExpenseLogPage() {
                     </FormControl>
                   </Grid>
 
+                  {/* Row 6: Category and Transaction Type as Text Labels */}
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ display: 'flex', gap: 3, alignItems: 'center', height: '100%', pl: 1 }}>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          Category
+                        </Typography>
+                        <Typography variant="body2" fontWeight={500}>
+                          {recurringData.category || 'Sundry'}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                          Type
+                        </Typography>
+                        <Typography variant="body2" fontWeight={500}>
+                          Expense
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </Grid>
+
                   {/* Save Button */}
                   <Grid item xs={12}>
-                    <Box sx={{ display: 'flex', gap: 2 }}>
-                      <Button
-                        variant="contained"
-                        fullWidth
-                        onClick={handleSaveRecurringExpense}
-                        size="medium"
-                        sx={{
-                          background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
-                          color: '#ffffff !important',
-                          textTransform: 'none',
-                          fontWeight: 600,
-                          '&:hover': {
-                            background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important',
-                          }
-                        }}
-                      >
-                        Save Transaction
-                      </Button>
-                      <Button
-                        variant="outlined"
-                        onClick={handleResetRecurringForm}
-                        sx={{
-                          py: 1.5,
-                          px: 4,
-                          borderRadius: 2,
-                          textTransform: 'none',
-                          fontSize: '1rem',
-                          fontWeight: 600,
-                          borderColor: '#616161',
-                          color: '#616161',
-                          minWidth: '120px',
-                          '&:hover': {
-                            borderColor: '#212121',
-                            bgcolor: '#f5f5f5'
-                          }
-                        }}
-                      >
-                        Reset
-                      </Button>
-                    </Box>
+                    <Button
+                      variant="contained"
+                      fullWidth
+                      onClick={handleSaveRecurringExpense}
+                      sx={{
+                        background: 'linear-gradient(45deg, #ff9a56 30%, #ff6b35 90%)',
+                        py: 1.5,
+                        borderRadius: 2,
+                        textTransform: 'none',
+                        fontSize: '1rem',
+                        fontWeight: 600,
+                        '&:hover': {
+                          background: 'linear-gradient(45deg, #9c27b0 30%, #6a1b9a 90%)',
+                        }
+                      }}
+                    >
+                      Save Transaction
+                    </Button>
                   </Grid>
                 </>
               )}
@@ -2906,7 +2910,7 @@ function DailyExpenseLogPage() {
         <TabPanel value={tabValue} index={4}>
           <Box sx={{ p: { xs: 2, sm: 3 }, pt: { xs: 1, sm: 2 } }}>
             <Grid container spacing={2}>
-              {/* Row 1: Date and Transaction Type */}
+              {/* Row 1: Date */}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -2915,93 +2919,17 @@ function DailyExpenseLogPage() {
                   value={incomeData.date}
                   onChange={(e) => handleIncomeFieldChange('date', e.target.value)}
                   InputLabelProps={{ shrink: true }}
-                  size="small"
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 2,
-                      '&:hover fieldset': { borderColor: '#616161' },
-                      '&.Mui-focused fieldset': { borderColor: '#616161' }
+                      '&:hover fieldset': { borderColor: '#ff9a56' },
+                      '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                     }
                   }}
                 />
               </Grid>
 
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Transaction Type"
-                  value="Income"
-                  disabled
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      borderRadius: 2,
-                      bgcolor: '#f5f5f5'
-                    }
-                  }}
-                />
-              </Grid>
-
-              {/* Row 2: Category Dropdown */}
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Category</InputLabel>
-                  <Select
-                    value={incomeData.category}
-                    label="Category"
-                    onChange={(e) => handleIncomeFieldChange('category', e.target.value)}
-                    sx={{
-                      borderRadius: 2,
-                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
-                    }}
-                  >
-                    {incomeCategories.map(cat => (
-                      <MenuItem key={cat} value={cat}>{cat}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {/* Row 3: Transaction Description */}
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Transaction Description"
-                  value={incomeData.transactionDesc}
-                  onChange={(e) => handleIncomeFieldChange('transactionDesc', e.target.value)}
-                  placeholder="e.g., Monthly salary from company"
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      borderRadius: 2,
-                      '&:hover fieldset': { borderColor: '#616161' },
-                      '&.Mui-focused fieldset': { borderColor: '#616161' }
-                    }
-                  }}
-                />
-              </Grid>
-
-              {/* Row 4: Income Source */}
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Income Source</InputLabel>
-                  <Select
-                    value={incomeData.expenseHead}
-                    label="Income Source"
-                    onChange={(e) => handleIncomeFieldChange('expenseHead', e.target.value)}
-                    sx={{
-                      borderRadius: 2,
-                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
-                    }}
-                  >
-                    {incomeSources.map(source => (
-                      <MenuItem key={source} value={source}>{source}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {/* Row 5: Amount and Currency */}
+              {/* Row 2: Amount and Currency */}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -3010,19 +2938,18 @@ function DailyExpenseLogPage() {
                   value={incomeData.amount}
                   onChange={(e) => handleIncomeFieldChange('amount', e.target.value)}
                   inputProps={{ min: 0, step: 0.01 }}
-                  size="small"
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 2,
-                      '&:hover fieldset': { borderColor: '#616161' },
-                      '&.Mui-focused fieldset': { borderColor: '#616161' }
+                      '&:hover fieldset': { borderColor: '#ff9a56' },
+                      '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                     }
                   }}
                 />
               </Grid>
 
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth size="small">
+                <FormControl fullWidth>
                   <InputLabel>Currency</InputLabel>
                   <Select
                     value={incomeData.currency}
@@ -3030,8 +2957,8 @@ function DailyExpenseLogPage() {
                     onChange={(e) => handleIncomeFieldChange('currency', e.target.value)}
                     sx={{
                       borderRadius: 2,
-                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                     }}
                   >
                     {currencies.map(curr => (
@@ -3041,9 +2968,9 @@ function DailyExpenseLogPage() {
                 </FormControl>
               </Grid>
 
-              {/* Row 6: Payment Mode */}
+              {/* Row 3: Payment Mode */}
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth size="small">
+                <FormControl fullWidth>
                   <InputLabel>Payment Mode</InputLabel>
                   <Select
                     value={incomeData.paymentMode}
@@ -3051,8 +2978,8 @@ function DailyExpenseLogPage() {
                     onChange={(e) => handleIncomeFieldChange('paymentMode', e.target.value)}
                     sx={{
                       borderRadius: 2,
-                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                     }}
                   >
                     {PAYMENT_MODES.map(mode => (
@@ -3065,7 +2992,7 @@ function DailyExpenseLogPage() {
               {/* Bank Account / Credit Card Dropdown */}
               {shouldShowAccountDropdown(incomeData.paymentMode) && (
                 <Grid item xs={12} sm={6}>
-                  <FormControl fullWidth size="small">
+                  <FormControl fullWidth>
                     <InputLabel>
                       {incomeData.paymentMode === 'Credit Card' ? 'Credit Card' : 'Bank Account'}
                     </InputLabel>
@@ -3076,13 +3003,18 @@ function DailyExpenseLogPage() {
                         const selectedId = e.target.value;
                         const accounts = getAvailableAccounts(incomeData.paymentMode);
                         const selected = accounts.find(acc => acc.id === selectedId);
-                        handleIncomeFieldChange('accountId', selectedId);
-                        handleIncomeFieldChange('accountName', selected ? (selected.accountNickName || selected.nickName) : '');
+                        
+                        // Update both accountId and accountName in a single state update
+                        setIncomeData(prev => ({
+                          ...prev,
+                          accountId: selectedId,
+                          accountName: selected ? (selected.accountNickName || selected.nickName) : ''
+                        }));
                       }}
                       sx={{
                         borderRadius: 2,
-                        '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                        '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                        '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                       }}
                     >
                       <MenuItem value="">
@@ -3106,12 +3038,11 @@ function DailyExpenseLogPage() {
                   value={incomeData.transactionDesc}
                   onChange={(e) => handleIncomeFieldChange('transactionDesc', e.target.value)}
                   placeholder="e.g., Monthly salary from company"
-                  size="small"
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 2,
-                      '&:hover fieldset': { borderColor: '#616161' },
-                      '&.Mui-focused fieldset': { borderColor: '#616161' }
+                      '&:hover fieldset': { borderColor: '#ff9a56' },
+                      '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
                     }
                   }}
                 />
@@ -3119,7 +3050,7 @@ function DailyExpenseLogPage() {
 
               {/* Row 5: Income Source */}
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth size="small">
+                <FormControl fullWidth>
                   <InputLabel>Income Source</InputLabel>
                   <Select
                     value={incomeData.expenseHead}
@@ -3127,8 +3058,8 @@ function DailyExpenseLogPage() {
                     onChange={(e) => handleIncomeFieldChange('expenseHead', e.target.value)}
                     sx={{
                       borderRadius: 2,
-                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' },
+                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#ff9a56' }
                     }}
                   >
                     {incomeSources.map(source => (
@@ -3167,14 +3098,15 @@ function DailyExpenseLogPage() {
                     variant="contained"
                     fullWidth
                     onClick={handleSaveIncomeTransaction}
-                    size="medium"
                     sx={{
-                      background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
-                      color: '#ffffff !important',
+                      background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
+                      py: 1.5,
+                      borderRadius: 2,
                       textTransform: 'none',
+                      fontSize: '1rem',
                       fontWeight: 600,
                       '&:hover': {
-                        background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important',
+                        background: 'linear-gradient(135deg, #ff9a56 0%, #ff6f00 100%)',
                       }
                     }}
                   >
@@ -3190,12 +3122,12 @@ function DailyExpenseLogPage() {
                       textTransform: 'none',
                       fontSize: '1rem',
                       fontWeight: 600,
-                      borderColor: '#616161',
-                      color: '#616161',
+                      borderColor: '#ff9a56',
+                      color: '#ff9a56',
                       minWidth: '120px',
                       '&:hover': {
-                        borderColor: '#212121',
-                        bgcolor: '#f5f5f5'
+                        borderColor: '#ff6f00',
+                        bgcolor: '#fff3e0'
                       }
                     }}
                   >
@@ -3206,13 +3138,12 @@ function DailyExpenseLogPage() {
             </Grid>
           </Box>
         </TabPanel>
+      </Paper>
 
       {/* Transaction History - Week-wise Tabs */}
-      <Box sx={{ bgcolor: '#f0f0f0', px: 2, py: 1.5, borderRadius: 1, mb: 2 }}>
-        <Typography variant="h6" fontWeight="600" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-          Transactions Log
-        </Typography>
-      </Box>
+      <Typography variant="h6" fontWeight="600" sx={{ mb: 2, fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+        Transactions Log
+      </Typography>
       
       {transactions.length === 0 ? (
         <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderRadius: 2, border: '1px solid #e0e0e0' }}>
@@ -3545,25 +3476,6 @@ function DailyExpenseLogPage() {
           {notification.message}
         </Alert>
       </Snackbar>
-
-      {/* Quick Add FAB - Mobile Only */}
-      <Fab 
-        color="primary" 
-        aria-label="quick add"
-        onClick={() => setTabValue(0)}
-        sx={{ 
-          position: 'fixed', 
-          bottom: { xs: 70, sm: 80 }, 
-          right: { xs: 16, sm: 24 },
-          display: tabValue === 0 ? 'none' : { xs: 'flex', sm: 'none' },
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          '&:hover': {
-            background: 'linear-gradient(135deg, #764ba2 0%, #667eea 100%)',
-          }
-        }}
-      >
-        <AddIcon />
-      </Fab>
 
       <Footer />
     </Box>

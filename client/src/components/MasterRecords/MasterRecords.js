@@ -41,7 +41,7 @@ import Footer from '../Common/Footer';
 function TabPanel({ children, value, index }) {
   return (
     <div role="tabpanel" hidden={value !== index}>
-      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
+      {value === index && <Box sx={{ pt: 2 }}>{children}</Box>}
     </div>
   );
 }
@@ -500,14 +500,14 @@ function MasterRecords() {
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: '#f5f7fa', pb: 10 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-        <AccountBalanceWalletIcon sx={{ fontSize: { xs: 28, sm: 36 }, color: 'primary.main' }} />
-        <Typography variant="h4" fontWeight="700" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <AccountBalanceWalletIcon sx={{ fontSize: 24, color: '#42a5f5' }} />
+        <Typography variant="h6" fontWeight="700" sx={{ fontSize: '1.1rem' }}>
           Master Records
         </Typography>
       </Box>
 
-      <Paper elevation={2} sx={{ borderRadius: 2 }}>
+      <Paper elevation={2} sx={{ borderRadius: 1, bgcolor: '#ffffff' }}>
         {/* Tabs */}
         <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
           <Tabs
@@ -516,9 +516,12 @@ function MasterRecords() {
             variant="scrollable"
             scrollButtons="auto"
             sx={{
+              minHeight: '42px',
               '& .MuiTab-root': {
-                fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                minWidth: { xs: 'auto', sm: 120 }
+                fontSize: '0.875rem',
+                minWidth: { xs: 'auto', sm: 100 },
+                minHeight: '42px',
+                py: 1
               }
             }}
           >
@@ -532,30 +535,37 @@ function MasterRecords() {
 
         {/* Bank Accounts Tab */}
         <TabPanel value={tabValue} index={0}>
-          <Box sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h6" fontWeight="600">Bank Accounts</Typography>
+          <Box sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="subtitle1" fontWeight="600" sx={{ fontSize: '0.95rem' }}>Bank Accounts</Typography>
               <Button
                 variant="contained"
                 onClick={() => {
                   resetBankForm();
                   setBankDialogOpen(true);
                 }}
+                size="small"
               >
-                <AddIcon />
+                <AddIcon fontSize="small" />
               </Button>
             </Box>
 
             {bankAccounts.length === 0 ? (
-              <Alert severity="info">No bank accounts added yet. Click "Add Bank Account" to get started.</Alert>
+              <Alert severity="info" sx={{ py: 0.5, fontSize: '0.85rem' }}>No bank accounts added yet. Click "Add Bank Account" to get started.</Alert>
             ) : (
-              <List>
+              <List sx={{ py: 0 }}>
                 {bankAccounts.map((account) => (
                   <React.Fragment key={account.id}>
                     <ListItem
+                      sx={{ 
+                        py: 1.5, 
+                        borderLeft: account.isDefault ? '3px solid #4caf50' : 'none',
+                        bgcolor: account.isDefault ? '#f1f8e9' : 'inherit'
+                      }}
                       secondaryAction={
                         <Box>
                           <IconButton
+                            size="small"
                             edge="end"
                             onClick={() => {
                               setEditingBank(account);
@@ -563,26 +573,26 @@ function MasterRecords() {
                               setBankDialogOpen(true);
                             }}
                           >
-                            <EditIcon />
+                            <EditIcon fontSize="small" />
                           </IconButton>
-                          <IconButton edge="end" onClick={() => handleDeleteBankAccount(account.id)}>
-                            <DeleteIcon />
+                          <IconButton size="small" edge="end" onClick={() => handleDeleteBankAccount(account.id)}>
+                            <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Box>
                       }
                     >
                       <ListItemText
                         primary={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography fontWeight="600">{account.accountNickName}</Typography>
-                            <Chip label={account.bankName} size="small" color="primary" />
-                            {account.isDefault && <Chip label="Default" size="small" color="success" />}
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Typography fontWeight="600" sx={{ fontSize: '0.9rem' }}>{account.accountNickName}</Typography>
+                            <Chip label={account.bankName} size="small" color="primary" sx={{ height: '20px', fontSize: '0.7rem' }} />
+                            {account.isDefault && <Chip label="Default" size="small" color="success" sx={{ height: '20px', fontSize: '0.7rem' }} />}
                           </Box>
                         }
                         secondary={
                           <Box>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Typography variant="body2">
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
                                 Account: {visibleAccountNumbers[account.id] 
                                   ? account.accountNumber 
                                   : account.accountNumber.slice(0, 4) + '****' + account.accountNumber.slice(-4)}
@@ -596,13 +606,14 @@ function MasterRecords() {
                                   }, 10000);
                                 }}
                                 disabled={visibleAccountNumbers[account.id]}
+                                sx={{ p: 0.25 }}
                               >
-                                <VisibilityIcon fontSize="small" />
+                                <VisibilityIcon sx={{ fontSize: '0.9rem' }} />
                               </IconButton>
                             </Box>
-                            <Typography variant="body2">IFSC: {account.ifscCode}</Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>IFSC: {account.ifscCode}</Typography>
                             {account.upiIDs && account.upiIDs.length > 0 && (
-                              <Typography variant="body2">UPI: {account.upiIDs.filter(u => u).join(', ')}</Typography>
+                              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>UPI: {account.upiIDs.filter(u => u).join(', ')}</Typography>
                             )}
                           </Box>
                         }
@@ -633,15 +644,21 @@ function MasterRecords() {
             </Box>
 
             {creditCards.length === 0 ? (
-              <Alert severity="info">No credit cards added yet. Click "Add Credit Card" to get started.</Alert>
+              <Alert severity="info" sx={{ py: 0.5, fontSize: '0.85rem' }}>No credit cards added yet. Click "Add Credit Card" to get started.</Alert>
             ) : (
-              <List>
+              <List sx={{ py: 0 }}>
                 {creditCards.map((card) => (
                   <React.Fragment key={card.id}>
                     <ListItem
+                      sx={{ 
+                        py: 1.5, 
+                        borderLeft: card.isDefault ? '3px solid #4caf50' : 'none',
+                        bgcolor: card.isDefault ? '#f1f8e9' : 'inherit'
+                      }}
                       secondaryAction={
                         <Box>
                           <IconButton
+                            size="small"
                             edge="end"
                             onClick={() => {
                               setEditingCard(card);
@@ -649,25 +666,25 @@ function MasterRecords() {
                               setCardDialogOpen(true);
                             }}
                           >
-                            <EditIcon />
+                            <EditIcon fontSize="small" />
                           </IconButton>
-                          <IconButton edge="end" onClick={() => handleDeleteCreditCard(card.id)}>
-                            <DeleteIcon />
+                          <IconButton size="small" edge="end" onClick={() => handleDeleteCreditCard(card.id)}>
+                            <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Box>
                       }
                     >
                       <ListItemText
                         primary={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography fontWeight="600">{card.nickName}</Typography>
-                            {card.isDefault && <Chip label="Default" size="small" color="success" />}
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Typography fontWeight="600" sx={{ fontSize: '0.9rem' }}>{card.nickName}</Typography>
+                            {card.isDefault && <Chip label="Default" size="small" color="success" sx={{ height: '20px', fontSize: '0.7rem' }} />}
                           </Box>
                         }
                         secondary={
                           <Box>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <Typography variant="body2">
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
                                 Card: {visibleCardNumbers[card.id]
                                   ? card.cardNumber
                                   : '**** **** **** ' + card.cardNumber.slice(-4)}
@@ -681,11 +698,12 @@ function MasterRecords() {
                                   }, 10000);
                                 }}
                                 disabled={visibleCardNumbers[card.id]}
+                                sx={{ p: 0.25 }}
                               >
-                                <VisibilityIcon fontSize="small" />
+                                <VisibilityIcon sx={{ fontSize: '0.9rem' }} />
                               </IconButton>
                             </Box>
-                            <Typography variant="body2">Expiry: {card.expiryDate}</Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>Expiry: {card.expiryDate}</Typography>
                           </Box>
                         }
                       />
@@ -700,30 +718,33 @@ function MasterRecords() {
 
         {/* Demats Tab */}
         <TabPanel value={tabValue} index={2}>
-          <Box sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h6" fontWeight="600">Demat Accounts</Typography>
+          <Box sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="subtitle1" fontWeight="600" sx={{ fontSize: '0.95rem' }}>Demat Accounts</Typography>
               <Button
                 variant="contained"
                 onClick={() => {
                   resetDematForm();
                   setDematDialogOpen(true);
                 }}
+                size="small"
               >
-                <AddIcon />
+                <AddIcon fontSize="small" />
               </Button>
             </Box>
 
             {demats.length === 0 ? (
-              <Alert severity="info">No demat accounts added yet. Click "Add Demat Account" to get started.</Alert>
+              <Alert severity="info" sx={{ py: 0.5, fontSize: '0.85rem' }}>No demat accounts added yet. Click "Add Demat Account" to get started.</Alert>
             ) : (
-              <List>
+              <List sx={{ py: 0 }}>
                 {demats.map((demat) => (
                   <React.Fragment key={demat.id}>
                     <ListItem
+                      sx={{ py: 1.5 }}
                       secondaryAction={
                         <Box>
                           <IconButton
+                            size="small"
                             edge="end"
                             onClick={() => {
                               setEditingDemat(demat);
@@ -731,20 +752,20 @@ function MasterRecords() {
                               setDematDialogOpen(true);
                             }}
                           >
-                            <EditIcon />
+                            <EditIcon fontSize="small" />
                           </IconButton>
-                          <IconButton edge="end" onClick={() => handleDeleteDemat(demat.id)}>
-                            <DeleteIcon />
+                          <IconButton size="small" edge="end" onClick={() => handleDeleteDemat(demat.id)}>
+                            <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Box>
                       }
                     >
                       <ListItemText
-                        primary={<Typography fontWeight="600">{demat.brokerName}</Typography>}
+                        primary={<Typography fontWeight="600" sx={{ fontSize: '0.9rem' }}>{demat.brokerName}</Typography>}
                         secondary={
                           <Box>
-                            <Typography variant="body2">Client ID: {demat.clientID}</Typography>
-                            <Typography variant="body2">Start Date: {demat.startDate}</Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>Client ID: {demat.clientID}</Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>Start Date: {demat.startDate}</Typography>
                           </Box>
                         }
                       />
@@ -759,30 +780,33 @@ function MasterRecords() {
 
         {/* Loans Tab */}
         <TabPanel value={tabValue} index={3}>
-          <Box sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h6" fontWeight="600">Loans</Typography>
+          <Box sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="subtitle1" fontWeight="600" sx={{ fontSize: '0.95rem' }}>Loans</Typography>
               <Button
                 variant="contained"
                 onClick={() => {
                   resetLoanForm();
                   setLoanDialogOpen(true);
                 }}
+                size="small"
               >
-                <AddIcon />
+                <AddIcon fontSize="small" />
               </Button>
             </Box>
 
             {loans.length === 0 ? (
-              <Alert severity="info">No loans added yet. Click "Add Loan" to get started.</Alert>
+              <Alert severity="info" sx={{ py: 0.5, fontSize: '0.85rem' }}>No loans added yet. Click "Add Loan" to get started.</Alert>
             ) : (
-              <List>
+              <List sx={{ py: 0 }}>
                 {loans.map((loan) => (
                   <React.Fragment key={loan.id}>
                     <ListItem
+                      sx={{ py: 1.5 }}
                       secondaryAction={
                         <Box>
                           <IconButton
+                            size="small"
                             edge="end"
                             onClick={() => {
                               setEditingLoan(loan);
@@ -790,25 +814,25 @@ function MasterRecords() {
                               setLoanDialogOpen(true);
                             }}
                           >
-                            <EditIcon />
+                            <EditIcon fontSize="small" />
                           </IconButton>
-                          <IconButton edge="end" onClick={() => handleDeleteLoan(loan.id)}>
-                            <DeleteIcon />
+                          <IconButton size="small" edge="end" onClick={() => handleDeleteLoan(loan.id)}>
+                            <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Box>
                       }
                     >
                       <ListItemText
                         primary={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography fontWeight="600">{loan.bankName}</Typography>
-                            <Chip label={loan.loanType} size="small" color="secondary" />
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Typography fontWeight="600" sx={{ fontSize: '0.9rem' }}>{loan.bankName}</Typography>
+                            <Chip label={loan.loanType} size="small" color="secondary" sx={{ height: '20px', fontSize: '0.7rem' }} />
                           </Box>
                         }
                         secondary={
                           <Box>
-                            <Typography variant="body2">Account: {loan.loanAccount}</Typography>
-                            <Typography variant="body2">Amount: ₹{loan.loanAmount} | Rate: {loan.interestRate}% | Tenure: {loan.tenure} months</Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>Account: {loan.loanAccount}</Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>Amount: ₹{loan.loanAmount} | Rate: {loan.interestRate}% | Tenure: {loan.tenure} months</Typography>
                           </Box>
                         }
                       />
@@ -823,30 +847,33 @@ function MasterRecords() {
 
         {/* Insurances Tab */}
         <TabPanel value={tabValue} index={4}>
-          <Box sx={{ p: 3 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h6" fontWeight="600">Insurances</Typography>
+          <Box sx={{ p: 2 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+              <Typography variant="subtitle1" fontWeight="600" sx={{ fontSize: '0.95rem' }}>Insurance Policies</Typography>
               <Button
                 variant="contained"
                 onClick={() => {
                   resetInsuranceForm();
                   setInsuranceDialogOpen(true);
                 }}
+                size="small"
               >
-                <AddIcon />
+                <AddIcon fontSize="small" />
               </Button>
             </Box>
 
             {insurances.length === 0 ? (
-              <Alert severity="info">No insurances added yet. Click "Add Insurance" to get started.</Alert>
+              <Alert severity="info" sx={{ py: 0.5, fontSize: '0.85rem' }}>No insurance policies added yet. Click "Add Insurance" to get started.</Alert>
             ) : (
-              <List>
+              <List sx={{ py: 0 }}>
                 {insurances.map((insurance) => (
                   <React.Fragment key={insurance.id}>
                     <ListItem
+                      sx={{ py: 1.5 }}
                       secondaryAction={
                         <Box>
                           <IconButton
+                            size="small"
                             edge="end"
                             onClick={() => {
                               setEditingInsurance(insurance);
@@ -854,26 +881,26 @@ function MasterRecords() {
                               setInsuranceDialogOpen(true);
                             }}
                           >
-                            <EditIcon />
+                            <EditIcon fontSize="small" />
                           </IconButton>
-                          <IconButton edge="end" onClick={() => handleDeleteInsurance(insurance.id)}>
-                            <DeleteIcon />
+                          <IconButton size="small" edge="end" onClick={() => handleDeleteInsurance(insurance.id)}>
+                            <DeleteIcon fontSize="small" />
                           </IconButton>
                         </Box>
                       }
                     >
                       <ListItemText
                         primary={
-                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            <Typography fontWeight="600">{insurance.nickName}</Typography>
-                            <Chip label={insurance.insuranceType} size="small" color="info" />
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Typography fontWeight="600" sx={{ fontSize: '0.9rem' }}>{insurance.nickName}</Typography>
+                            <Chip label={insurance.insuranceType} size="small" color="info" sx={{ height: '20px', fontSize: '0.7rem' }} />
                           </Box>
                         }
                         secondary={
                           <Box>
-                            <Typography variant="body2">Provider: {insurance.insuranceProvider}</Typography>
-                            <Typography variant="body2">Period: {insurance.startDate} to {insurance.endDate}</Typography>
-                            <Typography variant="body2">Premium: ₹{insurance.premiumAmount} | Maturity: ₹{insurance.maturityAmount}</Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>Provider: {insurance.insuranceProvider}</Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>Period: {insurance.startDate} to {insurance.endDate}</Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>Premium: ₹{insurance.premiumAmount} | Maturity: ₹{insurance.maturityAmount}</Typography>
                           </Box>
                         }
                       />

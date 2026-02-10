@@ -33,7 +33,7 @@ const LandingPage = () => {
                   fontWeight: 700, 
                   mb: 2,
                   fontSize: { xs: '2rem', sm: '2.5rem', md: '3.5rem' },
-                  background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
+                  background: 'linear-gradient(135deg, #424242 0%, #212121 100%)',
                   WebkitBackgroundClip: 'text',
                   WebkitTextFillColor: 'transparent',
                   backgroundClip: 'text'
@@ -69,9 +69,10 @@ const LandingPage = () => {
                       textTransform: 'none',
                       fontSize: '1.1rem',
                       fontWeight: 600,
-                      background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
+                      background: 'linear-gradient(135deg, #424242 0%, #212121 100%)',
+                      color: '#ffffff',
                       '&:hover': {
-                        background: 'linear-gradient(135deg, #ffc299 0%, #ff9a56 100%)',
+                        background: 'linear-gradient(135deg, #616161 0%, #424242 100%)',
                       }
                     }}
                   >
@@ -91,9 +92,10 @@ const LandingPage = () => {
                         textTransform: 'none',
                         fontSize: '1.1rem',
                         fontWeight: 600,
-                        background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
+                        background: 'linear-gradient(135deg, #424242 0%, #212121 100%)',
+                        color: '#ffffff',
                         '&:hover': {
-                          background: 'linear-gradient(135deg, #ffc299 0%, #ff9a56 100%)',
+                          background: 'linear-gradient(135deg, #616161 0%, #424242 100%)',
                         }
                       }}
                     >
@@ -111,11 +113,11 @@ const LandingPage = () => {
                         textTransform: 'none',
                         fontSize: '1.1rem',
                         fontWeight: 600,
-                        borderColor: '#ff9a56',
-                        color: '#ff9a56',
+                        borderColor: '#616161',
+                        color: '#616161',
                         '&:hover': {
-                          borderColor: '#ff8533',
-                          backgroundColor: 'rgba(255, 154, 86, 0.08)'
+                          borderColor: '#424242',
+                          backgroundColor: 'rgba(66, 66, 66, 0.08)'
                         }
                       }}
                     >
@@ -144,7 +146,7 @@ const LandingPage = () => {
                     }
                   }}
                 >
-                  <ReceiptIcon sx={{ fontSize: 48, color: '#ff9a56', mb: 2 }} />
+                  <ReceiptIcon sx={{ fontSize: 48, color: '#616161', mb: 2 }} />
                   <Typography variant="h6" fontWeight="600" gutterBottom>
                     Expense Tracking
                   </Typography>
@@ -167,7 +169,7 @@ const LandingPage = () => {
                     }
                   }}
                 >
-                  <AccountBalanceWalletIcon sx={{ fontSize: 48, color: '#ff9a56', mb: 2 }} />
+                  <AccountBalanceWalletIcon sx={{ fontSize: 48, color: '#616161', mb: 2 }} />
                   <Typography variant="h6" fontWeight="600" gutterBottom>
                     Budget Management
                   </Typography>
@@ -190,7 +192,7 @@ const LandingPage = () => {
                     }
                   }}
                 >
-                  <TrendingUpIcon sx={{ fontSize: 48, color: '#ff9a56', mb: 2 }} />
+                  <TrendingUpIcon sx={{ fontSize: 48, color: '#616161', mb: 2 }} />
                   <Typography variant="h6" fontWeight="600" gutterBottom>
                     Financial Insights
                   </Typography>
@@ -213,7 +215,7 @@ const LandingPage = () => {
                     }
                   }}
                 >
-                  <AssessmentIcon sx={{ fontSize: 48, color: '#ff9a56', mb: 2 }} />
+                  <AssessmentIcon sx={{ fontSize: 48, color: '#616161', mb: 2 }} />
                   <Typography variant="h6" fontWeight="600" gutterBottom>
                     Detailed Reports
                   </Typography>

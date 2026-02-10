@@ -74,20 +74,16 @@ const MasterRecords = lazy(() => import('./components/MasterRecords/MasterRecord
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#ff9a56',
-      light: '#ffb380',
-      dark: '#ff8533',
-      // Custom gradient colors
-      gradient: {
-        start: '#ffb380',
-        end: '#ff8533'
-      }
+      main: '#424242',
+      light: '#757575',
+      dark: '#212121',
+      contrastText: '#ffffff',
     },
     secondary: {
-      main: '#ff9800',
+      main: '#757575',
     },
     background: {
-      default: '#f5f5f5',
+      default: '#fafafa',
     },
   },
   typography: {
@@ -104,22 +100,25 @@ const theme = createTheme({
         elevation: 1,
       },
     },
-    // Apply gradient to buttons
+    // Apply sleek dark style to buttons
     MuiButton: {
       styleOverrides: {
         containedPrimary: {
-          background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
+          background: 'linear-gradient(135deg, #424242 0%, #212121 100%)',
+          color: '#ffffff',
           '&:hover': {
-            background: 'linear-gradient(135deg, #ffc299 0%, #ff9a56 100%)',
+            background: 'linear-gradient(135deg, #616161 0%, #424242 100%)',
           },
         },
       },
     },
-    // Apply gradient to AppBar
+    // White AppBar with subtle shadow
     MuiAppBar: {
       styleOverrides: {
         colorPrimary: {
-          background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
+          background: '#ffffff',
+          color: '#212121',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
         },
       },
     },
@@ -233,25 +232,18 @@ function NavigationBar() {
   
   // Update navigation value when location changes
   useEffect(() => {
-    if (location.pathname === '/dashboard') {
-      setValue(0);
-    } else if (location.pathname === '/expenses') {
-      setValue(1);
-    } else if (location.pathname === '/recurring-transactions') {
-      setValue(2);
-    } else if (location.pathname === '/reports') {
-      setValue(3);
-    } else if (location.pathname === '/expense-heads') {
-      setValue(4);
-    } else if (location.pathname === '/currency-manager') {
-      setValue(5);
-    } else if (location.pathname === '/ledger') {
-      setValue(6);
-    } else if (location.pathname === '/admin') {
-      setValue(7);
-    } else {
-      setValue(-1); // Not in bottom nav, don't highlight anything
-    }
+    const pathToIndex = {
+      '/dashboard': 0,
+      '/expenses': 1,
+      '/reports': 2,
+      '/ledger': 3,
+      '/recurring-transactions': 4,
+      '/currency-manager': 5,
+      '/expense-heads': 6,
+      '/master-records': 7,
+      '/admin': 8,
+    };
+    setValue(pathToIndex[location.pathname] ?? -1);
   }, [location]);
   
   // Hide navigation on My Profile page and Maintenance page
@@ -276,61 +268,65 @@ function NavigationBar() {
           setValue(newValue);
         }}
         showLabels={false}
+        sx={{
+          bgcolor: '#ffffff',
+          '& .MuiBottomNavigationAction-root': {
+            color: '#9e9e9e',
+            minWidth: userIsAdmin ? '11.11%' : '12.5%',
+            transition: 'all 0.2s ease',
+          },
+          '& .Mui-selected': {
+            color: '#212121 !important',
+            bgcolor: '#f0f0f0',
+            borderTop: '2px solid #424242',
+          },
+        }}
       >
         <BottomNavigationAction 
           icon={<HomeIcon />} 
           component={Link} 
           to="/dashboard"
-          sx={{ minWidth: userIsAdmin ? '11.11%' : '12.5%' }}
         />
         <BottomNavigationAction 
           icon={<ReceiptIcon />} 
           component={Link} 
           to="/expenses"
-          sx={{ minWidth: userIsAdmin ? '11.11%' : '12.5%' }}
-        />
-        <BottomNavigationAction 
-          icon={<RepeatIcon />} 
-          component={Link} 
-          to="/recurring-transactions"
-          sx={{ minWidth: userIsAdmin ? '11.11%' : '12.5%' }}
         />
         <BottomNavigationAction 
           icon={<BarChartIcon />} 
           component={Link} 
           to="/reports"
-          sx={{ minWidth: userIsAdmin ? '11.11%' : '12.5%' }}
-        />
-        <BottomNavigationAction 
-          icon={<CategoryIcon />} 
-          component={Link} 
-          to="/expense-heads"
-          sx={{ minWidth: userIsAdmin ? '11.11%' : '12.5%' }}
-        />
-        <BottomNavigationAction 
-          icon={<CurrencyExchangeIcon />} 
-          component={Link} 
-          to="/currency-manager"
-          sx={{ minWidth: userIsAdmin ? '11.11%' : '12.5%' }}
         />
         <BottomNavigationAction 
           icon={<BookIcon />} 
           component={Link} 
           to="/ledger"
-          sx={{ minWidth: userIsAdmin ? '11.11%' : '12.5%' }}
+        />
+        <BottomNavigationAction 
+          icon={<RepeatIcon />} 
+          component={Link} 
+          to="/recurring-transactions"
+        />
+        <BottomNavigationAction 
+          icon={<CurrencyExchangeIcon />} 
+          component={Link} 
+          to="/currency-manager"
+        />
+        <BottomNavigationAction 
+          icon={<CategoryIcon />} 
+          component={Link} 
+          to="/expense-heads"
         />
         <BottomNavigationAction 
           icon={<FolderSharedIcon />} 
           component={Link} 
           to="/master-records"
-          sx={{ minWidth: userIsAdmin ? '11.11%' : '12.5%' }}
         />
         {userIsAdmin && (
           <BottomNavigationAction 
             icon={<SupervisorAccountIcon />} 
             component={Link} 
             to="/admin"
-            sx={{ minWidth: '11.11%' }}
           />
         )}
       </BottomNavigation>
@@ -358,14 +354,12 @@ function SidebarDrawer({ open, onClose }) {
   const menuItems = [
     { text: 'Dashboard', icon: <HomeIcon />, path: '/dashboard' },
     { text: 'Expenses', icon: <ReceiptIcon />, path: '/expenses' },
-    { text: 'Recurring Transactions', icon: <RepeatIcon />, path: '/recurring-transactions' },
-    { text: 'Budget', icon: <AccountBalanceWalletIcon />, path: '/budget', disabled: true },
-    { text: 'Categories', icon: <CategoryIcon />, path: '/categories', disabled: true },
     { text: 'Reports', icon: <BarChartIcon />, path: '/reports' },
-    { text: 'Expense Heads', icon: <CategoryIcon />, path: '/expense-heads' },
-    { text: 'Currency Manager', icon: <CurrencyExchangeIcon />, path: '/currency-manager' },
     { text: 'My Ledgers', icon: <BookIcon />, path: '/ledger' },
+    { text: 'Currency Manager', icon: <CurrencyExchangeIcon />, path: '/currency-manager' },
+    { text: 'Expense Heads', icon: <CategoryIcon />, path: '/expense-heads' },
     { text: 'Master Records', icon: <FolderSharedIcon />, path: '/master-records' },
+    { text: 'Recurring Transactions', icon: <RepeatIcon />, path: '/recurring-transactions' },
   ];
   
   if (userIsAdmin) {
@@ -380,17 +374,18 @@ function SidebarDrawer({ open, onClose }) {
       sx={{
         '& .MuiDrawer-paper': {
           width: 280,
-          background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
-          color: 'white',
+          background: '#ffffff',
+          color: '#212121',
+          borderRight: '1px solid #e0e0e0',
         },
       }}
     >
       <Box sx={{ p: 2, textAlign: 'center' }}>
-        <Typography variant="h6" fontWeight="600">
+        <Typography variant="h6" fontWeight="600" sx={{ color: '#212121' }}>
           Finance Tracker
         </Typography>
       </Box>
-      <Divider sx={{ borderColor: 'rgba(255,255,255,0.2)' }} />
+      <Divider sx={{ borderColor: '#e0e0e0' }} />
       <List sx={{ pt: 2 }}>
         {menuItems.map((item) => (
           <ListItem key={item.text} disablePadding>
@@ -399,18 +394,19 @@ function SidebarDrawer({ open, onClose }) {
               disabled={item.disabled}
               sx={{
                 '&:hover': {
-                  backgroundColor: item.disabled ? 'transparent' : 'rgba(255,255,255,0.1)',
+                  backgroundColor: item.disabled ? 'transparent' : '#f5f5f5',
                 },
                 opacity: item.disabled ? 0.5 : 1,
               }}
             >
-              <ListItemIcon sx={{ color: 'white', minWidth: 40 }}>
+              <ListItemIcon sx={{ color: '#90caf9', minWidth: 40 }}>
                 {item.icon}
               </ListItemIcon>
               <ListItemText 
                 primary={item.text} 
                 secondary={item.disabled ? 'Coming soon' : ''}
-                secondaryTypographyProps={{ sx: { color: 'rgba(255,255,255,0.7)', fontSize: '0.7rem' } }}
+                primaryTypographyProps={{ sx: { color: '#212121' } }}
+                secondaryTypographyProps={{ sx: { color: '#9e9e9e', fontSize: '0.7rem' } }}
               />
             </ListItemButton>
           </ListItem>

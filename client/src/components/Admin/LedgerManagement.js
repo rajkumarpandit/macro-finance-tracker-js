@@ -103,51 +103,107 @@ function LedgerManagement({ showHeader = false }) {
     // Only consider transactions with accountId (non-orphan transactions)
     const validTxns = txns.filter(t => t.accountId);
     
+    // Helper function to get INR amount - use stored amountInINR if available, otherwise convert
+    const getINRAmount = (t) => {
+      if (t.amountInINR !== undefined && t.amountInINR !== null) {
+        return t.amountInINR;
+      }
+      return convertToINR(t.amount, t.currency);
+    };
+    
     // Calculate totals from non-orphan transactions only
     const totalIncome = validTxns
       .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + convertToINR(t.amount, t.currency), 0);
+      .reduce((sum, t) => sum + getINRAmount(t), 0);
     
     const totalInvestment = validTxns
       .filter(t => t.expenseHead === 'Investment')
-      .reduce((sum, t) => sum + convertToINR(t.amount, t.currency), 0);
+      .reduce((sum, t) => sum + getINRAmount(t), 0);
     
     const upiExpenses = validTxns
       .filter(t => t.type === 'expense' && t.paymentMode === 'UPI')
-      .reduce((sum, t) => sum + convertToINR(t.amount, t.currency), 0);
+      .reduce((sum, t) => sum + getINRAmount(t), 0);
     
     const bankTransferExpenses = validTxns
       .filter(t => t.type === 'expense' && t.paymentMode === 'Bank Transfer')
-      .reduce((sum, t) => sum + convertToINR(t.amount, t.currency), 0);
+      .reduce((sum, t) => sum + getINRAmount(t), 0);
     
     const creditCardExpenses = validTxns
       .filter(t => t.type === 'expense' && t.paymentMode === 'Credit Card')
-      .reduce((sum, t) => sum + convertToINR(t.amount, t.currency), 0);
+      .reduce((sum, t) => sum + getINRAmount(t), 0);
     
     const totalExpenses = validTxns
       .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + convertToINR(t.amount, t.currency), 0);
+      .reduce((sum, t) => sum + getINRAmount(t), 0);
     
     // Calculate per-account closing balances
     const accountClosingBalances = {};
     if (ledger.accountBalances && Array.isArray(ledger.accountBalances)) {
+      console.log('=== ACCOUNT BALANCE CALCULATION DEBUG ===');
+      console.log('Ledger Account Balances:', ledger.accountBalances);
+      console.log('Total Valid Transactions:', validTxns.length);
+      
       ledger.accountBalances.forEach(account => {
         const accountId = account.accountId;
         const accountOpening = parseFloat(account.openingBalance) || 0;
+        const isCreditCard = account.accountType === 'creditCard';
+        
+        console.log(`\n--- Account: ${account.accountName} (${account.accountType}) ---`);
+        console.log('Opening Balance:', accountOpening);
         
         // Get transactions for this specific account
         const accountTxns = validTxns.filter(t => t.accountId === accountId);
+        console.log('Transactions for this account:', accountTxns.length);
         
-        const accountIncome = accountTxns
-          .filter(t => t.type === 'income')
-          .reduce((sum, t) => sum + convertToINR(t.amount, t.currency), 0);
+        // Log all transactions for this account
+        console.log('\n=== ALL TRANSACTIONS FOR THIS ACCOUNT ===');
+        accountTxns.forEach((t, idx) => {
+          const amountINR = getINRAmount(t);
+          console.log(`${idx + 1}. ${t.date} | ${t.type.toUpperCase()} | ${t.description} | ${t.currency} ${t.amount} (INR: ${amountINR.toFixed(2)})`);
+        });
         
-        const accountExpenses = accountTxns
-          .filter(t => t.type === 'expense')
-          .reduce((sum, t) => sum + convertToINR(t.amount, t.currency), 0);
+        // Detailed income calculation
+        const incomeTxns = accountTxns.filter(t => t.type === 'income');
+        console.log('\n=== INCOME TRANSACTIONS ===');
+        console.log(`Count: ${incomeTxns.length}`);
+        incomeTxns.forEach((t, idx) => {
+          const amountINR = getINRAmount(t);
+          console.log(`${idx + 1}. ${t.date} | ${t.description} | ${t.currency} ${t.amount} = INR ${amountINR.toFixed(2)}`);
+        });
+        const accountIncome = incomeTxns.reduce((sum, t) => sum + getINRAmount(t), 0);
+        console.log('Total Account Income:', accountIncome.toFixed(2));
         
-        accountClosingBalances[accountId] = accountOpening + accountIncome - accountExpenses;
+        // Detailed expense calculation
+        const expenseTxns = accountTxns.filter(t => t.type === 'expense');
+        console.log('\n=== EXPENSE TRANSACTIONS ===');
+        console.log(`Count: ${expenseTxns.length}`);
+        expenseTxns.forEach((t, idx) => {
+          const amountINR = getINRAmount(t);
+          console.log(`${idx + 1}. ${t.date} | ${t.description} | ${t.currency} ${t.amount} = INR ${amountINR.toFixed(2)}`);
+        });
+        const accountExpenses = expenseTxns.reduce((sum, t) => sum + getINRAmount(t), 0);
+        console.log('Total Account Expenses:', accountExpenses.toFixed(2));
+        
+        let closingBal;
+        if (isCreditCard) {
+          // For credit cards: Opening (debt) + Expenses (purchases) - Income (payments)
+          // Income here represents payments TO the card, which reduce debt
+          closingBal = accountOpening + accountExpenses - accountIncome;
+          console.log('Calculated Closing Balance (Credit Card):', closingBal);
+          console.log('Formula: Opening + Expenses - Income (payments) =', `${accountOpening} + ${accountExpenses} - ${accountIncome} = ${closingBal}`);
+        } else {
+          // For bank accounts: Opening + Income - Expenses
+          closingBal = accountOpening + accountIncome - accountExpenses;
+          console.log('Calculated Closing Balance (Bank):', closingBal);
+          console.log('Formula: Opening + Income - Expenses =', `${accountOpening} + ${accountIncome} - ${accountExpenses} = ${closingBal}`);
+        }
+        
+        accountClosingBalances[accountId] = closingBal;
       });
+      
+      console.log('\n=== FINAL ACCOUNT CLOSING BALANCES ===');
+      console.log(accountClosingBalances);
+      console.log('=== END DEBUG ===\n');
     }
     
     const runningOutflowBankAccount = upiExpenses + bankTransferExpenses;
@@ -558,8 +614,8 @@ function LedgerManagement({ showHeader = false }) {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
-        <CircularProgress />
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress size={32} />
       </Box>
     );
   }
@@ -568,9 +624,9 @@ function LedgerManagement({ showHeader = false }) {
     <Box>
       {/* Header - Only show when used as standalone page */}
       {showHeader && (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-          <BookIcon sx={{ fontSize: { xs: 28, sm: 36 }, color: 'primary.main' }} />
-          <Typography variant="h4" fontWeight="700" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <BookIcon sx={{ fontSize: 24, color: '#42a5f5' }} />
+          <Typography variant="h6" fontWeight="700" sx={{ fontSize: '1.1rem' }}>
             Ledger Management
           </Typography>
         </Box>
@@ -578,29 +634,28 @@ function LedgerManagement({ showHeader = false }) {
       
       {/* Subheading for when used within Admin page */}
       {!showHeader && (
-        <Typography variant="h5" fontWeight="700" gutterBottom sx={{ mb: 3 }}>
+        <Typography variant="h6" fontWeight="600" gutterBottom sx={{ mb: 2, fontSize: '1rem' }}>
           Ledger Management
         </Typography>
       )}
 
       {/* Current Open Ledger */}
-      <Paper elevation={2} sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+      <Paper elevation={2} sx={{ p: 1.5, mb: 2, borderRadius: 1, bgcolor: '#ffffff' }}>
         {openLedger ? (
           <Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5, flexWrap: 'wrap' }}>
               <Chip
                 icon={<BookIcon />}
                 label={openLedger.name}
-                color="success"
-                sx={{ fontSize: '1rem', fontWeight: 600, px: 2, py: 2.5 }}
+                sx={{ fontSize: '0.875rem', fontWeight: 600, px: 1.5, py: 2, bgcolor: '#42a5f5', color: '#fff', '& .MuiChip-icon': { color: '#fff' } }}
               />
-              <Typography variant="body2" color="text.secondary">
+              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
                 Started: {openLedger.startDate?.toDate().toLocaleDateString()}
               </Typography>
             </Box>
             
             {/* Editable Fields */}
-            <Grid container spacing={2} sx={{ mb: 2 }}>
+            <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -615,16 +670,16 @@ function LedgerManagement({ showHeader = false }) {
             </Grid>
 
             {/* Account Opening Balances */}
-            <Typography variant="subtitle1" sx={{ mt: 2, mb: 1, fontWeight: 600 }}>
+            <Typography variant="subtitle2" sx={{ mt: 1.5, mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
               Account Opening Balances
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, fontSize: '0.8rem' }}>
               Add all accounts and credit cards with their opening balances. 
               Credit cards should be entered as negative values (debt).
             </Typography>
 
             {accountBalances.map((account, index) => (
-              <Box key={index} sx={{ display: 'flex', gap: 1.5, mb: 2, alignItems: 'center' }}>
+              <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
                 <FormControl sx={{ width: 280 }} size="small">
                   <InputLabel>Account/Card</InputLabel>
                   <Select
@@ -681,8 +736,8 @@ function LedgerManagement({ showHeader = false }) {
             ))}
 
             {accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').length > 0 && (
-              <Alert severity="info" sx={{ mb: 2 }}>
-                <Typography variant="body2" fontWeight="600">
+              <Alert severity="info" sx={{ mb: 1.5, py: 0.5, fontSize: '0.85rem' }}>
+                <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>
                   Total Opening Balance: ₹{accountBalances
                     .filter(acc => acc.accountId && acc.openingBalance !== '')
                     .reduce((sum, acc) => {
@@ -691,13 +746,13 @@ function LedgerManagement({ showHeader = false }) {
                     }, 0)
                     .toFixed(2)}
                 </Typography>
-                <Typography variant="caption" display="block">
+                <Typography variant="caption" display="block" sx={{ fontSize: '0.7rem' }}>
                   (Bank Accounts - Credit Card Debt)
                 </Typography>
               </Alert>
             )}
 
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2, mb: 3 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1.5, mb: 2 }}>
               <IconButton
                 onClick={handleAddAccountRow}
                 color="primary"
@@ -720,20 +775,20 @@ function LedgerManagement({ showHeader = false }) {
               </Button>
             </Box>
 
-            <Divider sx={{ my: 3 }} />
+            <Divider sx={{ my: 2 }} />
 
             {/* Account Closing Balances */}
-            <Typography variant="subtitle1" sx={{ mt: 2, mb: 1, fontWeight: 600 }}>
+            <Typography variant="subtitle2" sx={{ mt: 1.5, mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
               Account Closing Balances
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, fontSize: '0.8rem' }}>
               Auto-calculated based on transactions. Only transactions with linked accounts are included.
             </Typography>
 
             {accountBalances.filter(acc => acc.accountId).map((account, index) => {
               const closingBalance = ledgerMetrics?.accountClosingBalances?.[account.accountId] || parseFloat(account.openingBalance) || 0;
               return (
-                <Box key={index} sx={{ display: 'flex', gap: 1.5, mb: 2, alignItems: 'center' }}>
+                <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
                   <TextField
                     sx={{ width: 280 }}
                     label="Account/Card"
@@ -762,63 +817,64 @@ function LedgerManagement({ showHeader = false }) {
             })}
 
             {accountBalances.filter(acc => acc.accountId).length > 0 && ledgerMetrics?.accountClosingBalances && (
-              <Alert severity="success" sx={{ mb: 2 }}>
-                <Typography variant="body2" fontWeight="600">
+              <Alert severity="success" sx={{ mb: 1.5, py: 0.5, fontSize: '0.85rem' }}>
+                <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>
                   Total Closing Balance: ₹{Object.values(ledgerMetrics.accountClosingBalances)
                     .reduce((sum, bal) => sum + bal, 0)
                     .toFixed(2)}
                 </Typography>
-                <Typography variant="caption" display="block">
+                <Typography variant="caption" display="block" sx={{ fontSize: '0.7rem' }}>
                   Sum of all account closing balances
                 </Typography>
               </Alert>
             )}
 
             {/* Expandable Calculated Metrics */}
-            <Box sx={{ mb: 2 }}>
+            <Box sx={{ mb: 1.5 }}>
               <Button
                 fullWidth
                 variant="outlined"
+                size="small"
                 endIcon={detailsExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                 onClick={() => setDetailsExpanded(!detailsExpanded)}
-                sx={{ justifyContent: 'space-between', textTransform: 'none' }}
+                sx={{ justifyContent: 'space-between', textTransform: 'none', fontSize: '0.875rem' }}
               >
                 View Calculated Metrics
               </Button>
               <Collapse in={detailsExpanded}>
                 {ledgerMetrics && (
-                  <Paper elevation={0} sx={{ mt: 2, p: 2, bgcolor: '#f5f7fa', borderRadius: 1 }}>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="caption" color="text.secondary">As of Date Income</Typography>
-                        <Typography variant="body1" fontWeight="600">{formatINR(ledgerMetrics.totalIncome)}</Typography>
+                  <Paper elevation={0} sx={{ mt: 1.5, p: 1.5, bgcolor: '#fafafa', borderRadius: 1 }}>
+                    <Grid container spacing={1}>
+                      <Grid item xs={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>As of Date Income</Typography>
+                        <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>{formatINR(ledgerMetrics.totalIncome)}</Typography>
                       </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="caption" color="text.secondary">As of Date Investment</Typography>
-                        <Typography variant="body1" fontWeight="600">{formatINR(ledgerMetrics.totalInvestment)}</Typography>
+                      <Grid item xs={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>As of Date Investment</Typography>
+                        <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>{formatINR(ledgerMetrics.totalInvestment)}</Typography>
                       </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="caption" color="text.secondary">As of Date Expenses</Typography>
-                        <Typography variant="body1" fontWeight="600">{formatINR(ledgerMetrics.totalExpenses)}</Typography>
+                      <Grid item xs={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>As of Date Expenses</Typography>
+                        <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>{formatINR(ledgerMetrics.totalExpenses)}</Typography>
                       </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="caption" color="text.secondary">Running Outflow (Bank Account)</Typography>
-                        <Typography variant="body1" fontWeight="600">{formatINR(ledgerMetrics.runningOutflowBankAccount)}</Typography>
-                        <Typography variant="caption" color="text.secondary" display="block">UPI + Bank Transfer</Typography>
+                      <Grid item xs={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Outflow (Bank Account)</Typography>
+                        <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>{formatINR(ledgerMetrics.runningOutflowBankAccount)}</Typography>
+                        <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.65rem' }}>UPI + Bank Transfer</Typography>
                       </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="caption" color="text.secondary">Running Outflow (Credit Card)</Typography>
-                        <Typography variant="body1" fontWeight="600">{formatINR(ledgerMetrics.creditCardExpenses)}</Typography>
+                      <Grid item xs={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Outflow (Credit Card)</Typography>
+                        <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>{formatINR(ledgerMetrics.creditCardExpenses)}</Typography>
                       </Grid>
-                      <Grid item xs={12} sm={6}>
-                        <Typography variant="caption" color="text.secondary">Indicative Closing (with CC)</Typography>
-                        <Typography variant="body1" fontWeight="600" color="primary.main">
+                      <Grid item xs={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Indicative Closing (with CC)</Typography>
+                        <Typography variant="body2" fontWeight="600" color="primary.main" sx={{ fontSize: '0.85rem' }}>
                           {formatINR(ledgerMetrics.indicativeClosingWithCC)}
                         </Typography>
                       </Grid>
                       <Grid item xs={12}>
-                        <Typography variant="caption" color="text.secondary">Indicative Closing (without CC)</Typography>
-                        <Typography variant="body1" fontWeight="600" color="secondary.main">
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Indicative Closing (without CC)</Typography>
+                        <Typography variant="body2" fontWeight="600" color="secondary.main" sx={{ fontSize: '0.85rem' }}>
                           {formatINR(ledgerMetrics.indicativeClosingWithoutCC)}
                         </Typography>
                       </Grid>
@@ -828,27 +884,31 @@ function LedgerManagement({ showHeader = false }) {
               </Collapse>
             </Box>
             
-            <Button
-              variant="contained"
-              color="error"
-              startIcon={<LockIcon />}
-              onClick={handleCloseLedger}
-              sx={{ textTransform: 'none' }}
-            >
-              Close Ledger
-            </Button>
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1.5 }}>
+              <Button
+                variant="contained"
+                color="error"
+                size="small"
+                startIcon={<LockIcon fontSize="small" />}
+                onClick={handleCloseLedger}
+                sx={{ textTransform: 'none', fontSize: '0.875rem' }}
+              >
+                Close Ledger
+              </Button>
+            </Box>
           </Box>
         ) : (
           <Box>
-            <Alert severity="warning" sx={{ mb: 2 }}>
+            <Alert severity="warning" sx={{ mb: 1.5, py: 0.5, fontSize: '0.85rem' }}>
               No open ledger. Transactions cannot be entered without an active ledger.
             </Alert>
             <Button
               variant="contained"
               color="primary"
-              startIcon={<AddIcon />}
+              size="small"
+              startIcon={<AddIcon fontSize="small" />}
               onClick={handleStartLedger}
-              sx={{ textTransform: 'none' }}
+              sx={{ textTransform: 'none', fontSize: '0.875rem' }}
             >
               Start New Ledger
             </Button>
@@ -857,56 +917,58 @@ function LedgerManagement({ showHeader = false }) {
       </Paper>
 
       {/* Ledger History */}
-      <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-        <Typography variant="h6" fontWeight="600" gutterBottom>
+      <Paper elevation={2} sx={{ p: 1.5, borderRadius: 1, bgcolor: '#ffffff' }}>
+        <Typography variant="subtitle1" fontWeight="600" gutterBottom sx={{ fontSize: '0.95rem' }}>
           Ledger History
         </Typography>
         
         {allLedgers.length === 0 ? (
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
             No ledgers found
           </Typography>
         ) : (
-          <List>
+          <List sx={{ py: 0 }}>
             {allLedgers.map((ledger) => (
               <React.Fragment key={ledger.id}>
                 <ListItem
+                  sx={{ py: 1.5, px: 1 }}
                   secondaryAction={
                     ledger.status === 'closed' && (
-                      <IconButton edge="end" onClick={() => handleViewLedgerDetails(ledger)}>
-                        <VisibilityIcon />
+                      <IconButton size="small" edge="end" onClick={() => handleViewLedgerDetails(ledger)}>
+                        <VisibilityIcon fontSize="small" />
                       </IconButton>
                     )
                   }
                 >
                   <ListItemText
                     primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Typography fontWeight="600">{ledger.name}</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography fontWeight="600" sx={{ fontSize: '0.9rem' }}>{ledger.name}</Typography>
                         <Chip 
                           label={ledger.status} 
                           size="small" 
                           color={ledger.status === 'open' ? 'success' : 'default'}
+                          sx={{ height: '20px', fontSize: '0.7rem' }}
                         />
                       </Box>
                     }
                     secondary={
                       <Box>
-                        <Typography variant="body2" component="span">
+                        <Typography variant="body2" component="span" sx={{ fontSize: '0.8rem' }}>
                           Started: {ledger.startDate?.toDate().toLocaleDateString()}
                         </Typography>
                         {ledger.openingBalance !== undefined && (
-                          <Typography variant="body2" component="span" sx={{ ml: 2 }}>
+                          <Typography variant="body2" component="span" sx={{ ml: 1.5, fontSize: '0.8rem' }}>
                             Opening: {formatINR(ledger.openingBalance)}
                           </Typography>
                         )}
                         {ledger.closingDate && (
                           <>
-                            <Typography variant="body2" component="span" sx={{ ml: 2 }}>
+                            <Typography variant="body2" component="span" sx={{ ml: 1.5, fontSize: '0.8rem' }}>
                               Closed: {ledger.closingDate?.toDate().toLocaleDateString()}
                             </Typography>
                             {ledger.closingBalance !== undefined && (
-                              <Typography variant="body2" component="span" sx={{ ml: 2 }}>
+                              <Typography variant="body2" component="span" sx={{ ml: 1.5, fontSize: '0.8rem' }}>
                                 Closing: {formatINR(ledger.closingBalance)}
                               </Typography>
                             )}
@@ -934,6 +996,7 @@ function LedgerManagement({ showHeader = false }) {
             onChange={(e) => setNewLedgerName(e.target.value)}
             placeholder="e.g., January 2024"
             margin="normal"
+            size="small"
             autoFocus
           />
           <TextField
@@ -944,19 +1007,20 @@ function LedgerManagement({ showHeader = false }) {
             onChange={(e) => setOpeningDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
             margin="normal"
+            size="small"
           />
 
-          <Typography variant="subtitle1" sx={{ mt: 3, mb: 2, fontWeight: 600 }}>
+          <Typography variant="subtitle1" sx={{ mt: 2, mb: 1.5, fontWeight: 600 }}>
             Account Opening Balances
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
             Add all accounts and credit cards with their opening balances. 
             Credit cards should be entered as negative values (debt).
           </Typography>
 
           {accountBalances.map((account, index) => (
-            <Box key={index} sx={{ display: 'flex', gap: 2, mb: 2, alignItems: 'flex-start' }}>
-              <FormControl sx={{ flex: 2 }}>
+            <Box key={index} sx={{ display: 'flex', gap: 2, mb: 1.5, alignItems: 'flex-start' }}>
+              <FormControl sx={{ flex: 2 }} size="small">
                 <InputLabel>Select Account/Card</InputLabel>
                 <Select
                   value={account.accountId}
@@ -997,6 +1061,7 @@ function LedgerManagement({ showHeader = false }) {
                 onChange={(e) => handleAccountChange(index, 'openingBalance', e.target.value)}
                 helperText={account.accountType === 'creditCard' ? 'Enter as negative' : ''}
                 inputProps={{ step: '0.01' }}
+                size="small"
               />
 
               <IconButton
@@ -1085,6 +1150,7 @@ function LedgerManagement({ showHeader = false }) {
             value={closingBalance}
             onChange={(e) => setClosingBalance(e.target.value)}
             margin="normal"
+            size="small"
             helperText="Pre-filled with calculated balance, editable"
           />
           <TextField
@@ -1095,6 +1161,7 @@ function LedgerManagement({ showHeader = false }) {
             onChange={(e) => setClosingDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
             margin="normal"
+            size="small"
           />
 
           {recurringExpenses.length > 0 && (

@@ -36,9 +36,9 @@ function AdminPage() {
   return (
     <Box sx={{ pb: 10 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-        <SupervisorAccountIcon sx={{ fontSize: { xs: 28, sm: 36 }, color: 'primary.main' }} />
-        <Typography variant="h4" fontWeight="700" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <SupervisorAccountIcon sx={{ fontSize: 24, color: '#42a5f5' }} />
+        <Typography variant="h6" fontWeight="700" sx={{ fontSize: '1.1rem' }}>
           Administration
         </Typography>
       </Box>

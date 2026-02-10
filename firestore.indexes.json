@@ -49,6 +49,15 @@
         { "fieldPath": "userId", "order": "ASCENDING" },
         { "fieldPath": "transactionName", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "recurring_expenses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "recurrenceType", "order": "ASCENDING" },
+        { "fieldPath": "transactionName", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

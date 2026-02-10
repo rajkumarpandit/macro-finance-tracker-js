@@ -13,19 +13,14 @@ import {
   CircularProgress,
   Alert,
   Snackbar,
-  Chip,
-  IconButton,
-  Tooltip,
-  Card,
-  CardContent,
-  Grid
+  Chip
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import UpdateIcon from '@mui/icons-material/Update';
 import { useAuth } from '../Auth/AuthContext';
 import { db } from '../../firebase/firebase';
-import { collection, doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import Footer from '../Common/Footer';
 
 // Top 10 most used currencies
@@ -252,7 +247,7 @@ function CurrencyManager() {
     const hoursSince = (new Date() - lastUpdated) / (1000 * 60 * 60);
     
     if (hoursSince < 24) {
-      return { text: 'Up to date', color: 'success' };
+      return { text: 'Up to date', color: 'info' };
     } else if (hoursSince < 72) {
       return { text: 'Needs update', color: 'warning' };
     } else {
@@ -263,153 +258,164 @@ function CurrencyManager() {
   const updateStatus = getUpdateStatus();
 
   return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#f5f7fa' }}>
-      <Box sx={{ pb: 10 }}>
-        {/* Page Title - Outside Paper */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-          <CurrencyExchangeIcon sx={{ fontSize: { xs: 28, sm: 36 }, color: 'primary.main' }} />
-          <Typography variant="h4" fontWeight="700" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
-            Currency Manager
+    <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#f5f7fa', pb: 10 }}>
+        {/* Header */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CurrencyExchangeIcon sx={{ fontSize: 24, color: '#42a5f5' }} />
+            <Typography variant="h6" fontWeight="700" sx={{ fontSize: '1.1rem' }}>
+              Currency Manager
+            </Typography>
+          </Box>
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={refreshing ? <CircularProgress size={16} color="inherit" /> : <RefreshIcon />}
+            onClick={() => fetchLatestRates(false)}
+            disabled={refreshing || loading}
+            sx={{ 
+              bgcolor: '#1976d2',
+              '&:hover': { bgcolor: '#1565c0' },
+              textTransform: 'none',
+              fontSize: '0.8rem',
+              px: 2,
+              py: 0.75
+            }}
+          >
+            {refreshing ? 'Updating...' : 'Refresh'}
+          </Button>
+        </Box>
+
+        {/* Compact Info Section */}
+        <Paper elevation={0} sx={{ p: 1.5, mb: 2, bgcolor: '#ffffff', border: '1px solid #e0e0e0', borderRadius: 1 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <UpdateIcon sx={{ fontSize: 18, color: 'text.secondary' }} />
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                Updated: {formatDate(lastUpdated)}
+              </Typography>
+            </Box>
+            <Chip 
+              label={updateStatus.text} 
+              color={updateStatus.color}
+              size="small"
+              sx={{ fontWeight: 600, height: 22, fontSize: '0.7rem', ...(updateStatus.color === 'info' && { bgcolor: '#42a5f5', color: '#fff' }) }}
+            />
+          </Box>
+        </Paper>
+
+        {/* Compact Info Alert */}
+        <Alert 
+          severity="info" 
+          sx={{ 
+            mb: 2, 
+            py: 0.5, 
+            '& .MuiAlert-icon': { fontSize: 18 },
+            bgcolor: '#ffffff',
+            border: '1px solid #e3f2fd'
+          }}
+        >
+          <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
+            All rates shown relative to INR. Click "Refresh" to update from internet.
+          </Typography>
+        </Alert>
+
+        {/* Compact Exchange Rates Table */}
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+            <CircularProgress size={32} />
+          </Box>
+        ) : (
+          <TableContainer 
+            component={Paper} 
+            elevation={0} 
+            sx={{ 
+              border: '1px solid #e0e0e0',
+              bgcolor: '#ffffff',
+              maxHeight: 'calc(100vh - 300px)',
+              '&::-webkit-scrollbar': {
+                width: '8px',
+              },
+              '&::-webkit-scrollbar-track': {
+                bgcolor: '#f5f5f5',
+              },
+              '&::-webkit-scrollbar-thumb': {
+                bgcolor: '#bdbdbd',
+                borderRadius: '4px',
+              }
+            }}
+          >
+            <Table size="small" stickyHeader>
+              <TableHead>
+                <TableRow>
+                  <TableCell sx={{ fontWeight: 700, py: 1, bgcolor: '#ffffff', fontSize: '0.75rem', borderBottom: '2px solid #e0e0e0' }}>
+                    Currency
+                  </TableCell>
+                  <TableCell sx={{ fontWeight: 700, py: 1, bgcolor: '#ffffff', fontSize: '0.75rem', borderBottom: '2px solid #e0e0e0' }}>
+                    Code
+                  </TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700, py: 1, bgcolor: '#ffffff', fontSize: '0.75rem', borderBottom: '2px solid #e0e0e0' }}>
+                    Rate (₹)
+                  </TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 700, py: 1, bgcolor: '#ffffff', fontSize: '0.75rem', borderBottom: '2px solid #e0e0e0' }}>
+                    For 100 Units
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {TOP_CURRENCIES.map((currency) => (
+                  <TableRow 
+                    key={currency.code}
+                    sx={{ 
+                      '&:hover': { bgcolor: '#f9f9f9' },
+                      bgcolor: currency.code === 'INR' ? '#f0f8ff' : '#ffffff',
+                      borderLeft: currency.code === 'INR' ? '3px solid #1976d2' : 'none'
+                    }}
+                  >
+                    <TableCell sx={{ py: 0.75, fontSize: '0.8rem', bgcolor: 'inherit' }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        <Typography 
+                          component="span" 
+                          sx={{ fontSize: '0.8rem', fontWeight: currency.code === 'INR' ? 600 : 400 }}
+                        >
+                          {currency.symbol} {currency.name}
+                        </Typography>
+                        {currency.code === 'INR' && (
+                          <Chip label="Base" size="small" color="primary" sx={{ height: 18, fontSize: '0.65rem', ml: 0.5 }} />
+                        )}
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ py: 0.75, bgcolor: 'inherit' }}>
+                      <Chip 
+                        label={currency.code} 
+                        size="small" 
+                        variant="outlined" 
+                        sx={{ height: 20, fontSize: '0.7rem', borderColor: '#e0e0e0' }} 
+                      />
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontWeight: 600, color: '#1976d2', py: 0.75, fontSize: '0.85rem', bgcolor: 'inherit' }}>
+                      {formatRate(exchangeRates[currency.code])}
+                    </TableCell>
+                    <TableCell align="right" sx={{ fontSize: '0.75rem', color: 'text.secondary', py: 0.75, bgcolor: 'inherit' }}>
+                      {formatRate((exchangeRates[currency.code] || 0) * 100)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+
+        {/* Compact Footer Note */}
+        <Box sx={{ mt: 2, p: 1.5, bgcolor: '#ffffff', borderRadius: 1, border: '1px solid #e0e0e0' }}>
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.7rem', mb: 0.5 }}>
+            <strong>Note:</strong> Rates from FreeCurrencyAPI.com, converted to INR base. Update weekly for accuracy.
           </Typography>
         </Box>
 
-        <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
-          {/* Refresh Button */}
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
-            <Button
-              variant="contained"
-              startIcon={refreshing ? <CircularProgress size={20} color="inherit" /> : <RefreshIcon />}
-              onClick={() => fetchLatestRates(false)}
-              disabled={refreshing || loading}
-              sx={{ 
-                bgcolor: 'primary.main',
-                '&:hover': { bgcolor: 'primary.dark' }
-              }}
-            >
-              {refreshing ? 'Updating...' : 'Refresh Rates'}
-            </Button>
-          </Box>
+        <Footer />
 
-          {/* Info Cards */}
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid item xs={12} sm={6}>
-              <Card elevation={1}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <UpdateIcon sx={{ color: 'text.secondary', mr: 1 }} />
-                    <Typography variant="caption" color="text.secondary">
-                      Last Updated
-                    </Typography>
-                  </Box>
-                  <Typography variant="h6" fontWeight="600">
-                    {formatDate(lastUpdated)}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <Card elevation={1}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <CurrencyExchangeIcon sx={{ color: 'text.secondary', mr: 1 }} />
-                    <Typography variant="caption" color="text.secondary">
-                      Status
-                    </Typography>
-                  </Box>
-                  <Chip 
-                    label={updateStatus.text} 
-                    color={updateStatus.color}
-                    sx={{ fontWeight: 600 }}
-                  />
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
-
-          {/* Info Alert */}
-          <Alert severity="info" sx={{ mb: 3 }}>
-            <Typography variant="body2">
-              Click "Refresh Rates" to fetch the latest exchange rates from the internet. All rates are shown relative to INR (Indian Rupee).
-            </Typography>
-          </Alert>
-
-          {/* Exchange Rates Table */}
-          {loading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-              <CircularProgress />
-            </Box>
-          ) : (
-            <TableContainer component={Paper} elevation={0} sx={{ border: '1px solid #e0e0e0' }}>
-              <Table size="small">
-                <TableHead>
-                  <TableRow sx={{ bgcolor: '#f5f5f5' }}>
-                    <TableCell sx={{ fontWeight: 700, py: 1, fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>Currency</TableCell>
-                    <TableCell sx={{ fontWeight: 700, py: 1, fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>Code</TableCell>
-                    <TableCell sx={{ fontWeight: 700, py: 1, fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>Symbol</TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700, py: 1, fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
-                      Rate
-                    </TableCell>
-                    <TableCell align="right" sx={{ fontWeight: 700, py: 1, fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
-                      Example
-                    </TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {TOP_CURRENCIES.map((currency) => (
-                    <TableRow 
-                      key={currency.code}
-                      sx={{ 
-                        '&:hover': { bgcolor: '#f9f9f9' },
-                        bgcolor: currency.code === 'INR' ? '#e8f5e9' : 'inherit'
-                      }}
-                    >
-                      <TableCell sx={{ py: 0.75 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                          <Typography 
-                            component="span" 
-                            fontWeight={currency.code === 'INR' ? 700 : 400}
-                            sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}
-                          >
-                            {currency.name}
-                          </Typography>
-                          {currency.code === 'INR' && (
-                            <Chip label="Base" size="small" color="success" sx={{ ml: 1, height: 18, fontSize: '0.65rem' }} />
-                          )}
-                        </Box>
-                      </TableCell>
-                      <TableCell sx={{ py: 0.75 }}>
-                        <Chip label={currency.code} size="small" variant="outlined" sx={{ height: 20, fontSize: { xs: '0.6rem', sm: '0.7rem' } }} />
-                      </TableCell>
-                      <TableCell sx={{ py: 0.75, fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>{currency.symbol}</TableCell>
-                      <TableCell align="right" sx={{ fontWeight: 600, color: 'primary.main', py: 0.75, fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
-                        {formatRate(exchangeRates[currency.code])}
-                      </TableCell>
-                      <TableCell align="right" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' }, color: 'text.secondary', py: 0.75 }}>
-                        {currency.symbol}100 = {formatRate((exchangeRates[currency.code] || 0) * 100)}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-
-          {/* Additional Info */}
-          <Box sx={{ mt: 3, p: 2, bgcolor: '#f0f4f8', borderRadius: 1 }}>
-            <Typography variant="caption" color="text.secondary" display="block" gutterBottom>
-              <strong>Note:</strong> Exchange rates are fetched from FreeCurrencyAPI.com and converted to INR base. 
-              The API provides USD-based rates which are automatically converted to show "1 unit of currency = X INR".
-              All your transactions will be calculated using these rates.
-            </Typography>
-            <Typography variant="caption" color="text.secondary" display="block">
-              <strong>Recommendation:</strong> Update rates at least once a week for accurate reporting, or whenever you notice they've become stale.
-            </Typography>
-          </Box>
-        </Paper>
-      </Box>
-      <Footer />
-
-      {/* Notification Snackbar */}
+        {/* Notification Snackbar */}
       <Snackbar
         open={notification.open}
         autoHideDuration={6000}

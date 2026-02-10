@@ -350,7 +350,7 @@ function MyProfilePage() {
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
-        <CircularProgress sx={{ color: '#ff9a56' }} />
+        <CircularProgress sx={{ color: '#616161' }} />
       </Box>
     );
   }
@@ -399,7 +399,7 @@ function MyProfilePage() {
           {/* Sex - Optional */}
           <Grid item xs={12}>
             <FormControl component="fieldset">
-              <FormLabel component="legend" sx={{ fontSize: { xs: '0.9rem', sm: '1rem' }, color: '#ff9a56', fontWeight: 500 }}>Sex (Optional)</FormLabel>
+              <FormLabel component="legend" sx={{ fontSize: { xs: '0.9rem', sm: '1rem' }, color: '#616161', fontWeight: 500 }}>Sex (Optional)</FormLabel>
               <RadioGroup
                 row
                 value={sex}
@@ -409,7 +409,7 @@ function MyProfilePage() {
                     fontSize: { xs: '0.85rem', sm: '0.95rem' }
                   },
                   '& .MuiRadio-root.Mui-checked': {
-                    color: '#ff9a56'
+                    color: '#616161'
                   }
                 }}
               >
@@ -434,8 +434,8 @@ function MyProfilePage() {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 1.5,
-                  '&:hover fieldset': { borderColor: '#ff9a56' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                  '&:hover fieldset': { borderColor: '#616161' },
+                  '&.Mui-focused fieldset': { borderColor: '#616161' }
                 }
               }}
             />
@@ -469,8 +469,8 @@ function MyProfilePage() {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 1.5,
-                  '&:hover fieldset': { borderColor: '#ff9a56' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                  '&:hover fieldset': { borderColor: '#616161' },
+                  '&.Mui-focused fieldset': { borderColor: '#616161' }
                 }
               }}
             />
@@ -489,8 +489,8 @@ function MyProfilePage() {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 1.5,
-                  '&:hover fieldset': { borderColor: '#ff9a56' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                  '&:hover fieldset': { borderColor: '#616161' },
+                  '&.Mui-focused fieldset': { borderColor: '#616161' }
                 }
               }}
             />
@@ -507,8 +507,8 @@ function MyProfilePage() {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 1.5,
-                  '&:hover fieldset': { borderColor: '#ff9a56' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                  '&:hover fieldset': { borderColor: '#616161' },
+                  '&.Mui-focused fieldset': { borderColor: '#616161' }
                 }
               }}
             />
@@ -525,8 +525,8 @@ function MyProfilePage() {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 1.5,
-                  '&:hover fieldset': { borderColor: '#ff9a56' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                  '&:hover fieldset': { borderColor: '#616161' },
+                  '&.Mui-focused fieldset': { borderColor: '#616161' }
                 }
               }}
             />
@@ -543,8 +543,8 @@ function MyProfilePage() {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 1.5,
-                  '&:hover fieldset': { borderColor: '#ff9a56' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                  '&:hover fieldset': { borderColor: '#616161' },
+                  '&.Mui-focused fieldset': { borderColor: '#616161' }
                 }
               }}
             />
@@ -561,8 +561,8 @@ function MyProfilePage() {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 1.5,
-                  '&:hover fieldset': { borderColor: '#ff9a56' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                  '&:hover fieldset': { borderColor: '#616161' },
+                  '&.Mui-focused fieldset': { borderColor: '#616161' }
                 }
               }}
             />
@@ -579,8 +579,8 @@ function MyProfilePage() {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 1.5,
-                  '&:hover fieldset': { borderColor: '#ff9a56' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                  '&:hover fieldset': { borderColor: '#616161' },
+                  '&.Mui-focused fieldset': { borderColor: '#616161' }
                 }
               }}
             />
@@ -597,8 +597,8 @@ function MyProfilePage() {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 1.5,
-                  '&:hover fieldset': { borderColor: '#ff9a56' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                  '&:hover fieldset': { borderColor: '#616161' },
+                  '&.Mui-focused fieldset': { borderColor: '#616161' }
                 }
               }}
             />
@@ -616,8 +616,8 @@ function MyProfilePage() {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 1.5,
-                  '&:hover fieldset': { borderColor: '#ff9a56' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                  '&:hover fieldset': { borderColor: '#616161' },
+                  '&.Mui-focused fieldset': { borderColor: '#616161' }
                 }
               }}
             />
@@ -626,7 +626,7 @@ function MyProfilePage() {
           {/* Address Type - Optional */}
           <Grid item xs={12}>
             <FormControl component="fieldset">
-              <FormLabel component="legend" sx={{ fontSize: { xs: '0.9rem', sm: '1rem' }, color: '#ff9a56', fontWeight: 500 }}>Address Type (Optional)</FormLabel>
+              <FormLabel component="legend" sx={{ fontSize: { xs: '0.9rem', sm: '1rem' }, color: '#616161', fontWeight: 500 }}>Address Type (Optional)</FormLabel>
               <RadioGroup
                 row
                 value={addressType}
@@ -636,7 +636,7 @@ function MyProfilePage() {
                     fontSize: { xs: '0.85rem', sm: '0.95rem' }
                   },
                   '& .MuiRadio-root.Mui-checked': {
-                    color: '#ff9a56'
+                    color: '#616161'
                   }
                 }}
               >
@@ -648,7 +648,7 @@ function MyProfilePage() {
 
           {/* Login Methods Section */}
           <Grid item xs={12}>
-            <Typography variant="body2" fontWeight="600" color="#ff9a56" sx={{ mt: 1.5, mb: 0.5, fontSize: { xs: '0.95rem', sm: '1.1rem' } }}>
+            <Typography variant="body2" fontWeight="600" color="#616161" sx={{ mt: 1.5, mb: 0.5, fontSize: { xs: '0.95rem', sm: '1.1rem' } }}>
               Login Methods
             </Typography>
           </Grid>
@@ -659,7 +659,7 @@ function MyProfilePage() {
 
           {/* Change Password Section */}
           <Grid item xs={12}>
-            <Typography variant="body2" fontWeight="600" color="#ff9a56" sx={{ mt: 1.5, mb: 0.5, fontSize: { xs: '0.95rem', sm: '1.1rem' } }}>
+            <Typography variant="body2" fontWeight="600" color="#616161" sx={{ mt: 1.5, mb: 0.5, fontSize: { xs: '0.95rem', sm: '1.1rem' } }}>
               Change Password
             </Typography>
           </Grid>
@@ -689,8 +689,8 @@ function MyProfilePage() {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 1.5,
-                  '&:hover fieldset': { borderColor: '#ff9a56' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                  '&:hover fieldset': { borderColor: '#616161' },
+                  '&.Mui-focused fieldset': { borderColor: '#616161' }
                 },
                 '& .MuiFormHelperText-root': {
                   fontSize: { xs: '0.65rem', sm: '0.75rem' }
@@ -729,8 +729,8 @@ function MyProfilePage() {
               sx={{
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 1.5,
-                  '&:hover fieldset': { borderColor: '#ff9a56' },
-                  '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                  '&:hover fieldset': { borderColor: '#616161' },
+                  '&.Mui-focused fieldset': { borderColor: '#616161' }
                 },
                 '& .MuiFormHelperText-root': {
                   fontSize: { xs: '0.65rem', sm: '0.75rem' }
@@ -770,9 +770,10 @@ function MyProfilePage() {
                   borderRadius: 2,
                   px: 3,
                   fontSize: { xs: '0.85rem', sm: '0.95rem' },
-                  background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
+                  background: 'linear-gradient(135deg, #424242 0%, #212121 100%)',
+                  color: '#ffffff',
                   '&:hover': {
-                    background: 'linear-gradient(135deg, #ffc299 0%, #ff9a56 100%)',
+                    background: 'linear-gradient(135deg, #616161 0%, #424242 100%)',
                   },
                   '&:disabled': {
                     background: '#e0e0e0'

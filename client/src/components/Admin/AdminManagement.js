@@ -381,7 +381,7 @@ const AdminManagement = () => {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ color: '#ff9a56' }} />
+                  <SearchIcon sx={{ color: '#616161' }} />
                 </InputAdornment>
               ),
               endAdornment: searchTerm && (
@@ -395,8 +395,8 @@ const AdminManagement = () => {
             sx={{
               '& .MuiOutlinedInput-root': {
                 borderRadius: 2,
-                '&:hover fieldset': { borderColor: '#ff9a56' },
-                '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                '&:hover fieldset': { borderColor: '#616161' },
+                '&.Mui-focused fieldset': { borderColor: '#616161' }
               }
             }}
           />
@@ -434,7 +434,7 @@ const AdminManagement = () => {
                       p: { xs: 1.5, sm: 2 },
                       borderRadius: 2,
                       border: '1px solid',
-                      borderColor: currentDelete ? '#d32f2f' : (hasChanges ? '#ff9a56' : '#e0e0e0'),
+                      borderColor: currentDelete ? '#d32f2f' : (hasChanges ? '#616161' : '#e0e0e0'),
                       backgroundColor: currentDelete ? '#ffebee' : (currentIsEnabled ? 'white' : 'rgba(0, 0, 0, 0.04)'),
                       opacity: currentIsEnabled ? 1 : 0.7,
                       transition: 'all 0.3s ease',
@@ -448,7 +448,7 @@ const AdminManagement = () => {
                       <Typography variant="subtitle2" fontWeight="600" sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
                         {user.displayName}
                         {user.email === currentUser.email && (
-                          <Chip label="You" size="small" sx={{ ml: 1, bgcolor: '#ff9a56', color: 'white', fontSize: '0.7rem' }} />
+                          <Chip label="You" size="small" sx={{ ml: 1, bgcolor: '#616161', color: 'white', fontSize: '0.7rem' }} />
                         )}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.75rem', sm: '0.85rem' } }}>
@@ -475,8 +475,8 @@ const AdminManagement = () => {
                             disabled={user.email === currentUser.email || currentDelete}
                             size="small"
                             sx={{
-                              color: '#ff9a56',
-                              '&.Mui-checked': { color: '#ff9a56' }
+                              color: '#616161',
+                              '&.Mui-checked': { color: '#616161' }
                             }}
                           />
                         }
@@ -496,8 +496,8 @@ const AdminManagement = () => {
                             disabled={user.email === currentUser.email || currentDelete}
                             size="small"
                             sx={{
-                              color: '#ff9a56',
-                              '&.Mui-checked': { color: '#ff9a56' }
+                              color: '#616161',
+                              '&.Mui-checked': { color: '#616161' }
                             }}
                           />
                         }
@@ -548,11 +548,11 @@ const AdminManagement = () => {
                         fontWeight: 600,
                         background: currentDelete 
                           ? 'linear-gradient(135deg, #d32f2f 0%, #c62828 100%)'
-                          : (hasChanges ? 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)' : undefined),
+                          : (hasChanges ? 'linear-gradient(135deg, #424242 0%, #212121 100%)' : undefined),
                         '&:hover': {
                           background: currentDelete
                             ? 'linear-gradient(135deg, #c62828 0%, #b71c1c 100%)'
-                            : (hasChanges ? 'linear-gradient(135deg, #ff9a56 0%, #ff6f00 100%)' : undefined),
+                            : (hasChanges ? 'linear-gradient(135deg, #616161 0%, #424242 100%)' : undefined),
                         },
                         '&:disabled': {
                           background: '#e0e0e0',

@@ -139,7 +139,7 @@ function Login() {
             <LockOpenIcon 
               sx={{ 
                 fontSize: 40, 
-                color: '#ff9a56', 
+                color: '#616161', 
                 mb: 0.5 
               }} 
             />
@@ -201,10 +201,10 @@ function Login() {
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 2,
                   '&:hover fieldset': {
-                    borderColor: '#ff9a56',
+                    borderColor: '#616161',
                   },
                   '&.Mui-focused fieldset': {
-                    borderColor: '#ff9a56',
+                    borderColor: '#616161',
                   }
                 }
               }}
@@ -240,10 +240,10 @@ function Login() {
                 '& .MuiOutlinedInput-root': {
                   borderRadius: 2,
                   '&:hover fieldset': {
-                    borderColor: '#ff9a56',
+                    borderColor: '#616161',
                   },
                   '&.Mui-focused fieldset': {
-                    borderColor: '#ff9a56',
+                    borderColor: '#616161',
                   }
                 }
               }}
@@ -253,7 +253,7 @@ function Login() {
               <Link 
                 to="/forgot-password" 
                 style={{ 
-                  color: '#ff9a56', 
+                  color: '#616161', 
                   textDecoration: 'none',
                   fontSize: '14px',
                   fontWeight: 500
@@ -275,10 +275,10 @@ function Login() {
                   borderRadius: 2,
                   textTransform: 'none',
                   fontSize: '1rem',
-                  borderColor: '#ff9a56',
-                  color: '#ff9a56',
+                  borderColor: '#616161',
+                  color: '#616161',
                   '&:hover': {
-                    borderColor: '#ff8533',
+                    borderColor: '#424242',
                     backgroundColor: 'rgba(255, 154, 86, 0.08)'
                   }
                 }}
@@ -297,9 +297,10 @@ function Login() {
                   textTransform: 'none',
                   fontSize: '1rem',
                   fontWeight: 600,
-                  background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
+                  background: 'linear-gradient(135deg, #424242 0%, #212121 100%)',
+                  color: '#ffffff',
                   '&:hover': {
-                    background: 'linear-gradient(135deg, #ffc299 0%, #ff9a56 100%)',
+                    background: 'linear-gradient(135deg, #616161 0%, #424242 100%)',
                   },
                   '&:disabled': {
                     background: '#e0e0e0'
@@ -316,7 +317,7 @@ function Login() {
                 <Link 
                   to="/signup" 
                   style={{ 
-                    color: '#ff9a56', 
+                    color: '#616161', 
                     textDecoration: 'none',
                     fontWeight: 600
                   }}

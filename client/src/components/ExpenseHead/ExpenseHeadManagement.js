@@ -189,30 +189,30 @@ function ExpenseHeadManagement() {
   };
 
   return (
-    <Box sx={{ pb: 10 }}>
+    <Box sx={{ pb: 10, bgcolor: '#f5f7fa' }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 3 }}>
-        <CategoryIcon sx={{ fontSize: { xs: 28, sm: 36 }, color: 'primary.main' }} />
-        <Typography variant="h4" fontWeight="700" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+        <CategoryIcon sx={{ fontSize: 24, color: '#42a5f5' }} />
+        <Typography variant="h6" fontWeight="700" sx={{ fontSize: '1.1rem' }}>
           Expense Heads
         </Typography>
       </Box>
 
       {/* Alerts */}
       {error && (
-        <Alert severity="error" onClose={() => setError('')} sx={{ mb: 2 }}>
+        <Alert severity="error" onClose={() => setError('')} sx={{ mb: 1.5, py: 0.5, fontSize: '0.85rem' }}>
           {error}
         </Alert>
       )}
       {success && (
-        <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 2 }}>
+        <Alert severity="success" onClose={() => setSuccess('')} sx={{ mb: 1.5, py: 0.5, fontSize: '0.85rem' }}>
           {success}
         </Alert>
       )}
 
       {/* Form */}
-      <Paper elevation={3} sx={{ p: 3, mb: 4 }}>
-        <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start', flexDirection: { xs: 'column', sm: 'row' } }}>
+      <Paper elevation={2} sx={{ p: 1.5, mb: 2, bgcolor: '#ffffff' }}>
+        <Box sx={{ display: 'flex', gap: 1.5, alignItems: 'flex-start', flexDirection: { xs: 'column', sm: 'row' } }}>
           <TextField
             fullWidth
             label="Expense Head Name"
@@ -220,32 +220,36 @@ function ExpenseHeadManagement() {
             onChange={(e) => setExpenseHeadName(e.target.value)}
             onKeyPress={handleKeyPress}
             placeholder="e.g., Household, Education, Medical"
+            size="small"
             autoFocus
             sx={{
               '& .MuiOutlinedInput-root': {
-                borderRadius: 2,
-                '&:hover fieldset': { borderColor: '#ff9a56' },
-                '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                borderRadius: 1,
+                bgcolor: '#ffffff',
+                '&:hover fieldset': { borderColor: '#616161' },
+                '&.Mui-focused fieldset': { borderColor: '#616161' }
               }
             }}
           />
           
-          <Box sx={{ display: 'flex', gap: 2, minWidth: { sm: 'auto', xs: '100%' } }}>
+          <Box sx={{ display: 'flex', gap: 1.5, minWidth: { sm: 'auto', xs: '100%' } }}>
             <Button
               variant="contained"
               onClick={handleSave}
               disabled={saving || !expenseHeadName.trim()}
+              size="small"
               sx={{
-                background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
-                py: 1.5,
-                px: 4,
-                borderRadius: 2,
+                background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
+                color: '#ffffff !important',
+                py: 1,
+                px: 3,
+                borderRadius: 1,
                 textTransform: 'none',
-                fontSize: '1rem',
+                fontSize: '0.875rem',
                 fontWeight: 600,
-                minWidth: '100px',
+                minWidth: '90px',
                 '&:hover': {
-                  background: 'linear-gradient(135deg, #ff9a56 0%, #ff6f00 100%)',
+                  background: 'linear-gradient(135deg, #616161 0%, #424242 100%)',
                 }
               }}
             >
@@ -257,18 +261,19 @@ function ExpenseHeadManagement() {
                 variant="outlined"
                 onClick={handleCancelEdit}
                 disabled={saving}
+                size="small"
                 sx={{
-                  py: 1.5,
-                  px: 3,
-                  borderRadius: 2,
+                  py: 1,
+                  px: 2.5,
+                  borderRadius: 1,
                   textTransform: 'none',
-                  fontSize: '1rem',
+                  fontSize: '0.875rem',
                   fontWeight: 600,
-                  borderColor: '#ff9a56',
-                  color: '#ff9a56',
+                  borderColor: '#616161',
+                  color: '#616161',
                   '&:hover': {
-                    borderColor: '#ff6f00',
-                    bgcolor: '#fff3e0'
+                    borderColor: '#212121',
+                    bgcolor: '#f5f5f5'
                   }
                 }}
               >
@@ -280,30 +285,33 @@ function ExpenseHeadManagement() {
       </Paper>
 
       {/* List of Expense Heads */}
-      <Typography variant="h6" fontWeight="600" sx={{ mb: 2 }}>
+      <Typography variant="subtitle1" fontWeight="600" sx={{ mb: 1.5, fontSize: '0.95rem', color: '#333' }}>
         Your Expense Heads ({expenseHeads.length})
       </Typography>
 
       {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-          <CircularProgress />
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+          <CircularProgress size={32} />
         </Box>
       ) : expenseHeads.length === 0 ? (
-        <Paper sx={{ p: 3, textAlign: 'center' }}>
-          <Typography color="text.secondary">
+        <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#ffffff' }}>
+          <Typography color="text.secondary" sx={{ fontSize: '0.875rem' }}>
             No expense heads found. Add your first one above!
           </Typography>
         </Paper>
       ) : (
-        <Paper elevation={2}>
+        <Paper elevation={2} sx={{ bgcolor: '#ffffff' }}>
           <List sx={{ p: 0 }}>
             {expenseHeads.map((head, index) => (
               <ListItem
                 key={head.id}
                 sx={{
-                  borderBottom: index < expenseHeads.length - 1 ? '1px solid #e0e0e0' : 'none',
+                  py: 1.5,
+                  px: 2,
+                  borderBottom: index < expenseHeads.length - 1 ? '1px solid #f0f0f0' : 'none',
+                  borderLeft: editingId === head.id ? '3px solid #616161' : 'none',
                   '&:hover': {
-                    bgcolor: '#fff3e0'
+                    bgcolor: '#f5f5f5'
                   }
                 }}
                 secondaryAction={
@@ -312,20 +320,22 @@ function ExpenseHeadManagement() {
                       edge="end" 
                       aria-label="edit"
                       onClick={() => handleEdit(head)}
+                      size="small"
                       sx={{ 
-                        mr: 1,
-                        color: '#ff9a56',
+                        mr: 0.5,
+                        color: '#616161',
                         '&:hover': {
-                          bgcolor: '#fff3e0'
+                          bgcolor: '#f5f5f5'
                         }
                       }}
                     >
-                      <EditIcon />
+                      <EditIcon fontSize="small" />
                     </IconButton>
                     <IconButton 
                       edge="end" 
                       aria-label="delete"
                       onClick={() => handleDeleteClick(head)}
+                      size="small"
                       sx={{ 
                         color: '#f44336',
                         '&:hover': {
@@ -333,7 +343,7 @@ function ExpenseHeadManagement() {
                         }
                       }}
                     >
-                      <DeleteIcon />
+                      <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Box>
                 }
@@ -342,8 +352,8 @@ function ExpenseHeadManagement() {
                   primary={head.name}
                   primaryTypographyProps={{
                     fontWeight: editingId === head.id ? 600 : 400,
-                    fontSize: '1rem',
-                    color: editingId === head.id ? '#ff9a56' : 'text.primary'
+                    fontSize: '0.9rem',
+                    color: editingId === head.id ? '#616161' : 'text.primary'
                   }}
                 />
               </ListItem>
@@ -356,19 +366,23 @@ function ExpenseHeadManagement() {
       <Dialog
         open={deleteDialogOpen}
         onClose={() => setDeleteDialogOpen(false)}
+        maxWidth="xs"
+        fullWidth
       >
-        <DialogTitle>Delete Expense Head</DialogTitle>
+        <DialogTitle sx={{ fontSize: '1.1rem', fontWeight: 600, pb: 1 }}>Delete Expense Head</DialogTitle>
         <DialogContent>
-          <Typography>
+          <Typography sx={{ fontSize: '0.875rem' }}>
             Are you sure you want to delete "{itemToDelete?.name}"? This action cannot be undone.
           </Typography>
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
+        <DialogActions sx={{ p: 1.5 }}>
           <Button 
             onClick={() => setDeleteDialogOpen(false)}
+            size="small"
             sx={{ 
               textTransform: 'none',
-              color: '#666'
+              color: '#666',
+              fontSize: '0.875rem'
             }}
           >
             Cancel
@@ -376,9 +390,11 @@ function ExpenseHeadManagement() {
           <Button 
             onClick={handleDelete} 
             variant="contained"
+            size="small"
             sx={{
               textTransform: 'none',
               bgcolor: '#f44336',
+              fontSize: '0.875rem',
               '&:hover': {
                 bgcolor: '#d32f2f'
               }

@@ -126,10 +126,42 @@ function Dashboard() {
     // Calculate opening balance from accountBalances array
     // Total = sum(bank accounts) - sum(credit card debts)
     let openingBalance = 0;
+    const accountClosingBalances = [];
+    const accountClosingBalancesWithoutCC = [];
+    
     if (currentLedger?.accountBalances && Array.isArray(currentLedger.accountBalances)) {
       openingBalance = currentLedger.accountBalances.reduce((total, account) => {
         return total + (account.openingBalance || 0);
       }, 0);
+      
+      // Calculate closing balance for each account
+      currentLedger.accountBalances.forEach(account => {
+        const accountTxns = transactions.filter(t => t.accountId === account.accountId);
+        const accountIncome = accountTxns
+          .filter(t => t.type === 'income')
+          .reduce((sum, t) => sum + convertToINR(t.amount || 0, t.currency), 0);
+        const accountExpenses = accountTxns
+          .filter(t => t.type === 'expense')
+          .reduce((sum, t) => sum + convertToINR(t.amount || 0, t.currency), 0);
+        
+        const closingBal = (account.openingBalance || 0) + accountIncome - accountExpenses;
+        accountClosingBalances.push({
+          accountId: account.accountId,
+          accountName: account.accountName,
+          accountType: account.accountType,
+          closingBalance: closingBal
+        });
+        
+        // For non-credit card accounts only
+        if (account.accountType !== 'creditCard') {
+          accountClosingBalancesWithoutCC.push({
+            accountId: account.accountId,
+            accountName: account.accountName,
+            accountType: account.accountType,
+            closingBalance: closingBal
+          });
+        }
+      });
     } else {
       // Fallback to old single openingBalance field for backward compatibility
       openingBalance = currentLedger?.openingBalance || 0;
@@ -147,11 +179,26 @@ function Dashboard() {
       .filter(t => t.type === 'expense' && (t.expenseHead === 'Investment' || t.category === 'Investment'))
       .reduce((sum, t) => sum + convertToINR(t.amount || 0, t.currency), 0);
     
-    // Balance = Opening Balance + Income - Expenses - Investment
-    // Note: Investment is already included in expenses, so we subtract it again
+    // Balance = Opening Balance + Income - Expenses
     const balance = openingBalance + income - expenses;
     
-    return { openingBalance, income, expenses, investment, balance };
+    // Calculate balanceWithCC (sum of all account closing balances including credit cards)
+    const balanceWithCC = accountClosingBalances.reduce((sum, acc) => sum + acc.closingBalance, 0) || balance;
+    
+    // Calculate balanceWithoutCC (sum of account closing balances excluding credit cards)
+    const balanceWithoutCC = accountClosingBalancesWithoutCC.reduce((sum, acc) => sum + acc.closingBalance, 0) || balance;
+    
+    return { 
+      openingBalance, 
+      income, 
+      expenses, 
+      investment, 
+      balance, 
+      balanceWithCC, 
+      balanceWithoutCC, 
+      accountClosingBalances, 
+      accountClosingBalancesWithoutCC 
+    };
   }, [transactions, currentLedger]);
 
   // Calculate expense breakdown by expense head
@@ -196,7 +243,7 @@ function Dashboard() {
       'Transportation': { bg: '#e3f2fd', text: '#1565c0' },
       'Shopping': { bg: '#fce4ec', text: '#ad1457' },
       'Entertainment': { bg: '#f3e5f5', text: '#6a1b9a' },
-      'Bills & Utilities': { bg: '#fff3e0', text: '#e65100' },
+      'Bills & Utilities': { bg: '#f5f5f5', text: '#e65100' },
       'Healthcare': { bg: '#ffebee', text: '#c62828' },
       'Education': { bg: '#e1f5fe', text: '#01579b' },
       'Food & Dining': { bg: '#fff8e1', text: '#f57f17' },
@@ -210,7 +257,7 @@ function Dashboard() {
     const colors = {
       'Salary': { bg: '#e8f5e9', text: '#2e7d32' },
       'Freelance': { bg: '#e3f2fd', text: '#1565c0' },
-      'Business': { bg: '#fff3e0', text: '#e65100' },
+      'Business': { bg: '#f5f5f5', text: '#e65100' },
       'Investment Returns': { bg: '#e0f2f1', text: '#00695c' },
       'Rental Income': { bg: '#f3e5f5', text: '#6a1b9a' },
       'Bonus': { bg: '#fce4ec', text: '#ad1457' },
@@ -220,12 +267,12 @@ function Dashboard() {
   };
 
   return (
-    <Box sx={{ minHeight: '100vh', bgcolor: '#f5f7fa', pb: 10 }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: '#f5f7fa', pb: 8 }}>
       {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <DashboardIcon sx={{ fontSize: { xs: 28, sm: 36 }, color: 'primary.main' }} />
-            <Typography variant="h4" fontWeight="700" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <DashboardIcon sx={{ fontSize: 24, color: '#42a5f5' }} />
+            <Typography variant="h6" fontWeight="700" sx={{ fontSize: '1.1rem' }}>
               Dashboard
             </Typography>
           </Box>
@@ -237,11 +284,13 @@ function Dashboard() {
             <Chip
               icon={<BookIcon />}
               label={currentLedger.name}
-              color="primary"
               sx={{
                 fontWeight: 600,
                 fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                px: 1
+                px: 1,
+                bgcolor: '#42a5f5',
+                color: '#fff',
+                '& .MuiChip-icon': { color: '#fff' }
               }}
             />
           ) : (
@@ -258,28 +307,28 @@ function Dashboard() {
 
         {/* Warning if no ledger */}
         {!ledgerLoading && !currentLedger && (
-          <Alert severity="warning" sx={{ mb: 3 }}>
+          <Alert severity="warning" sx={{ mb: 1.5, py: 0.5 }}>
             No open ledger found. Please start a new monthly ledger from the Admin page to view dashboard data.
           </Alert>
         )}
 
         {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-            <CircularProgress size={40} />
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 2 }}>
+            <CircularProgress size={30} />
           </Box>
         ) : currentLedger ? (
           <>
             {/* Summary Cards */}
-            <Grid container spacing={2} sx={{ mb: 3 }}>
+            <Grid container spacing={1.5} sx={{ mb: 2 }}>
               {/* Opening Balance */}
-              <Grid item xs={6} sm={6} md={2.4}>
-                <Card elevation={2} sx={{ borderRadius: 2 }}>
-                  <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                    <AccountBalanceWalletIcon sx={{ fontSize: 40, color: '#9c27b0', mb: 1 }} />
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+              <Grid item xs={6} sm={4} md={2}>
+                <Card elevation={1} sx={{ borderRadius: 1.5, height: '100%' }}>
+                  <CardContent sx={{ textAlign: 'center', py: 1, px: 1, '&:last-child': { pb: 1 } }}>
+                    <AccountBalanceWalletIcon sx={{ fontSize: 26, color: '#9c27b0', mb: 0.25 }} />
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.25, fontSize: '0.65rem' }}>
                       Opening
                     </Typography>
-                    <Typography variant="h5" fontWeight="700" color="#9c27b0">
+                    <Typography variant="body2" fontWeight="700" color="#9c27b0" sx={{ fontSize: '0.85rem' }}>
                       {formatCurrency(summary.openingBalance)}
                     </Typography>
                   </CardContent>
@@ -287,14 +336,14 @@ function Dashboard() {
               </Grid>
 
               {/* Total Income */}
-              <Grid item xs={6} sm={6} md={2.4}>
-                <Card elevation={2} sx={{ borderRadius: 2 }}>
-                  <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                    <TrendingUpIcon sx={{ fontSize: 40, color: '#4caf50', mb: 1 }} />
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+              <Grid item xs={6} sm={4} md={2}>
+                <Card elevation={1} sx={{ borderRadius: 1.5, height: '100%' }}>
+                  <CardContent sx={{ textAlign: 'center', py: 1, px: 1, '&:last-child': { pb: 1 } }}>
+                    <TrendingUpIcon sx={{ fontSize: 26, color: '#4caf50', mb: 0.25 }} />
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.25, fontSize: '0.65rem' }}>
                       Income
                     </Typography>
-                    <Typography variant="h5" fontWeight="700" color="#4caf50">
+                    <Typography variant="body2" fontWeight="700" color="#4caf50" sx={{ fontSize: '0.85rem' }}>
                       {formatCurrency(summary.income)}
                     </Typography>
                   </CardContent>
@@ -302,14 +351,14 @@ function Dashboard() {
               </Grid>
 
               {/* Total Expenses */}
-              <Grid item xs={6} sm={6} md={2.4}>
-                <Card elevation={2} sx={{ borderRadius: 2 }}>
-                  <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                    <TrendingDownIcon sx={{ fontSize: 40, color: '#f44336', mb: 1 }} />
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+              <Grid item xs={6} sm={4} md={2}>
+                <Card elevation={1} sx={{ borderRadius: 1.5, height: '100%' }}>
+                  <CardContent sx={{ textAlign: 'center', py: 1, px: 1, '&:last-child': { pb: 1 } }}>
+                    <TrendingDownIcon sx={{ fontSize: 26, color: '#f44336', mb: 0.25 }} />
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.25, fontSize: '0.65rem' }}>
                       Expenses
                     </Typography>
-                    <Typography variant="h5" fontWeight="700" color="#f44336">
+                    <Typography variant="body2" fontWeight="700" color="#f44336" sx={{ fontSize: '0.85rem' }}>
                       {formatCurrency(summary.expenses)}
                     </Typography>
                   </CardContent>
@@ -317,30 +366,55 @@ function Dashboard() {
               </Grid>
 
               {/* Investment */}
-              <Grid item xs={6} sm={6} md={2.4}>
-                <Card elevation={2} sx={{ borderRadius: 2 }}>
-                  <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                    <SavingsIcon sx={{ fontSize: 40, color: '#2196f3', mb: 1 }} />
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
+              <Grid item xs={6} sm={4} md={2}>
+                <Card elevation={1} sx={{ borderRadius: 1.5, height: '100%' }}>
+                  <CardContent sx={{ textAlign: 'center', py: 1, px: 1, '&:last-child': { pb: 1 } }}>
+                    <SavingsIcon sx={{ fontSize: 26, color: '#2196f3', mb: 0.25 }} />
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.25, fontSize: '0.65rem' }}>
                       Investment
                     </Typography>
-                    <Typography variant="h5" fontWeight="700" color="#2196f3">
+                    <Typography variant="body2" fontWeight="700" color="#2196f3" sx={{ fontSize: '0.85rem' }}>
                       {formatCurrency(summary.investment)}
                     </Typography>
                   </CardContent>
                 </Card>
               </Grid>
 
-              {/* Balance */}
-              <Grid item xs={6} sm={6} md={2.4}>
-                <Card elevation={2} sx={{ borderRadius: 2 }}>
-                  <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                    <AccountBalanceIcon sx={{ fontSize: 40, color: summary.balance >= 0 ? '#4caf50' : '#f44336', mb: 1 }} />
-                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.5 }}>
-                      Balance
+              {/* Closing Balance with CC */}
+              <Grid item xs={6} sm={4} md={2}>
+                <Card elevation={1} sx={{ borderRadius: 1.5, height: '100%' }}>
+                  <CardContent sx={{ textAlign: 'center', py: 1, px: 1, '&:last-child': { pb: 1 } }}>
+                    <AccountBalanceIcon sx={{ fontSize: 26, color: summary.balanceWithCC >= 0 ? '#4caf50' : '#f44336', mb: 0.25 }} />
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.25, fontSize: '0.65rem' }}>
+                      Closing (with CC)
                     </Typography>
-                    <Typography variant="h5" fontWeight="700" color={summary.balance >= 0 ? '#4caf50' : '#f44336'}>
-                      {formatCurrency(summary.balance)}
+                    <Typography variant="body1" fontWeight="700" color={summary.balanceWithCC >= 0 ? '#4caf50' : '#f44336'} sx={{ fontSize: '0.9rem' }}>
+                      {formatCurrency(summary.balanceWithCC)}
+                    </Typography>
+                    {summary.accountClosingBalances && summary.accountClosingBalances.length > 0 && (
+                      <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.6rem', mt: 0.25, lineHeight: 1.3 }}>
+                        {summary.accountClosingBalances.map((acc, idx) => (
+                          <span key={acc.accountId}>
+                            {acc.accountName}: {formatCurrency(acc.closingBalance)}
+                            {idx < summary.accountClosingBalances.length - 1 ? ' | ' : ''}
+                          </span>
+                        ))}
+                      </Typography>
+                    )}
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              {/* Closing Balance without CC */}
+              <Grid item xs={6} sm={4} md={2}>
+                <Card elevation={1} sx={{ borderRadius: 1.5, height: '100%' }}>
+                  <CardContent sx={{ textAlign: 'center', py: 1, px: 1, '&:last-child': { pb: 1 } }}>
+                    <AccountBalanceWalletIcon sx={{ fontSize: 26, color: summary.balanceWithoutCC >= 0 ? '#00897b' : '#d32f2f', mb: 0.25 }} />
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 0.25, fontSize: '0.65rem' }}>
+                      Closing (w/o CC)
+                    </Typography>
+                    <Typography variant="body1" fontWeight="700" color={summary.balanceWithoutCC >= 0 ? '#00897b' : '#d32f2f'} sx={{ fontSize: '0.9rem' }}>
+                      {formatCurrency(summary.balanceWithoutCC)}
                     </Typography>
                   </CardContent>
                 </Card>
@@ -348,30 +422,30 @@ function Dashboard() {
             </Grid>
 
             {/* Expense Breakdown by Head */}
-            <Paper elevation={2} sx={{ p: 3, borderRadius: 2, mb: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <CategoryIcon sx={{ color: 'primary.main' }} />
-                <Typography variant="h6" fontWeight="600">
+            <Paper elevation={1} sx={{ p: 1.5, borderRadius: 1.5, mb: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1 }}>
+                <CategoryIcon sx={{ color: 'primary.main', fontSize: 20 }} />
+                <Typography variant="subtitle2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>
                   Expense Breakdown
                 </Typography>
               </Box>
               
               {expenseByHead.length > 0 ? (
-                <Grid container spacing={2}>
+                <Grid container spacing={1}>
                   {expenseByHead.map(({ head, amount }) => (
-                    <Grid item xs={12} sm={6} md={4} key={head}>
+                    <Grid item xs={6} sm={4} md={3} key={head}>
                       <Box
                         onClick={() => navigate(`/reports?expenseHead=${encodeURIComponent(head)}`)}
                         sx={{
-                          p: 2,
-                          borderRadius: 2,
+                          p: 1.25,
+                          borderRadius: 1.5,
                           bgcolor: getExpenseHeadColor(head).bg,
                           border: `1px solid ${getExpenseHeadColor(head).text}20`,
                           cursor: 'pointer',
                           transition: 'all 0.2s ease-in-out',
                           '&:hover': {
-                            transform: 'translateY(-4px)',
-                            boxShadow: 3,
+                            transform: 'translateY(-2px)',
+                            boxShadow: 2,
                             border: `2px solid ${getExpenseHeadColor(head).text}40`
                           }
                         }}
@@ -380,20 +454,20 @@ function Dashboard() {
                           variant="caption"
                           color="text.secondary"
                           display="block"
-                          sx={{ mb: 0.5, fontSize: '0.75rem' }}
+                          sx={{ mb: 0.25, fontSize: '0.65rem', lineHeight: 1.2 }}
                         >
                           {head}
                         </Typography>
                         <Typography
-                          variant="h6"
+                          variant="body2"
                           fontWeight="700"
-                          sx={{ color: getExpenseHeadColor(head).text }}
+                          sx={{ color: getExpenseHeadColor(head).text, fontSize: '0.8rem' }}
                         >
                           {formatCurrency(amount)}
                         </Typography>
                         <Typography
                           variant="caption"
-                          sx={{ color: getExpenseHeadColor(head).text, opacity: 0.7 }}
+                          sx={{ color: getExpenseHeadColor(head).text, opacity: 0.7, fontSize: '0.6rem' }}
                         >
                           {((amount / summary.expenses) * 100).toFixed(1)}% of total
                         </Typography>
@@ -409,30 +483,30 @@ function Dashboard() {
             </Paper>
 
             {/* Income Breakdown by Source */}
-            <Paper elevation={2} sx={{ p: 3, borderRadius: 2 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <TrendingUpIcon sx={{ color: 'success.main' }} />
-                <Typography variant="h6" fontWeight="600">
+            <Paper elevation={1} sx={{ p: 1.5, borderRadius: 1.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: 1 }}>
+                <TrendingUpIcon sx={{ color: 'success.main', fontSize: 20 }} />
+                <Typography variant="subtitle2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>
                   Income Breakdown
                 </Typography>
               </Box>
               
               {incomeBySource.length > 0 ? (
-                <Grid container spacing={2}>
+                <Grid container spacing={1}>
                   {incomeBySource.map(({ source, amount }) => (
-                    <Grid item xs={12} sm={6} md={4} key={source}>
+                    <Grid item xs={6} sm={4} md={3} key={source}>
                       <Box
                         onClick={() => navigate(`/reports?type=income&source=${encodeURIComponent(source)}`)}
                         sx={{
-                          p: 2,
-                          borderRadius: 2,
+                          p: 1.25,
+                          borderRadius: 1.5,
                           bgcolor: getIncomeSourceColor(source).bg,
                           border: `1px solid ${getIncomeSourceColor(source).text}20`,
                           cursor: 'pointer',
                           transition: 'all 0.2s ease-in-out',
                           '&:hover': {
-                            transform: 'translateY(-4px)',
-                            boxShadow: 3,
+                            transform: 'translateY(-2px)',
+                            boxShadow: 2,
                             border: `2px solid ${getIncomeSourceColor(source).text}40`
                           }
                         }}
@@ -441,20 +515,20 @@ function Dashboard() {
                           variant="caption"
                           color="text.secondary"
                           display="block"
-                          sx={{ mb: 0.5, fontSize: '0.75rem' }}
+                          sx={{ mb: 0.25, fontSize: '0.65rem', lineHeight: 1.2 }}
                         >
                           {source}
                         </Typography>
                         <Typography
-                          variant="h6"
+                          variant="body2"
                           fontWeight="700"
-                          sx={{ color: getIncomeSourceColor(source).text }}
+                          sx={{ color: getIncomeSourceColor(source).text, fontSize: '0.8rem' }}
                         >
                           {formatCurrency(amount)}
                         </Typography>
                         <Typography
                           variant="caption"
-                          sx={{ color: getIncomeSourceColor(source).text, opacity: 0.7 }}
+                          sx={{ color: getIncomeSourceColor(source).text, opacity: 0.7, fontSize: '0.6rem' }}
                         >
                           {((amount / summary.income) * 100).toFixed(1)}% of total
                         </Typography>
@@ -470,12 +544,12 @@ function Dashboard() {
             </Paper>
           </>
         ) : (
-          <Paper elevation={2} sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
-            <DashboardIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2, opacity: 0.5 }} />
-            <Typography variant="h6" gutterBottom>
+          <Paper elevation={1} sx={{ p: 2.5, textAlign: 'center', borderRadius: 1.5 }}>
+            <DashboardIcon sx={{ fontSize: 40, color: 'text.secondary', mb: 1, opacity: 0.5 }} />
+            <Typography variant="subtitle2" gutterBottom>
               No Data Available
             </Typography>
-            <Typography variant="body2" color="text.secondary">
+            <Typography variant="caption" color="text.secondary">
               Start a new ledger to begin tracking your finances
             </Typography>
           </Paper>

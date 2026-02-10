@@ -62,7 +62,7 @@ function MaintenancePage() {
 
   return (
     <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <AppBar position="static" sx={{ background: '#ff9a56' }}>
+      <AppBar position="static" sx={{ background: '#ffffff', color: '#212121', boxShadow: '0 1px 3px rgba(0,0,0,0.12)' }}>
         <Toolbar>
           <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
             Macro Tracker
@@ -78,14 +78,14 @@ function MaintenancePage() {
           </Menu>
         </Toolbar>
       </AppBar>
-      <Box sx={{ flexGrow: 1, background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', px: { xs: 2, sm: 3 }, py: { xs: 3, sm: 4 } }}>
+      <Box sx={{ flexGrow: 1, background: 'linear-gradient(135deg, #424242 0%, #212121 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', px: { xs: 2, sm: 3 }, py: { xs: 3, sm: 4 } }}>
         <Container maxWidth="sm">
           <Paper elevation={8} sx={{ p: { xs: 3, sm: 4, md: 6 }, borderRadius: 3, textAlign: 'center', background: 'linear-gradient(to bottom, #ffffff, #f5f7fa)' }}>
-            <BuildIcon sx={{ fontSize: { xs: 60, sm: 80 }, color: '#ff9a56', mb: { xs: 2, sm: 3 }, animation: 'spin 3s linear infinite', '@keyframes spin': { '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' } } }} />
+            <BuildIcon sx={{ fontSize: { xs: 60, sm: 80 }, color: '#616161', mb: { xs: 2, sm: 3 }, animation: 'spin 3s linear infinite', '@keyframes spin': { '0%': { transform: 'rotate(0deg)' }, '100%': { transform: 'rotate(360deg)' } } }} />
             <Typography variant="h4" component="h1" fontWeight="bold" gutterBottom sx={{ mb: 2, fontSize: { xs: '1.75rem', sm: '2.125rem' } }}>Under Maintenance</Typography>
             <Typography variant="body1" color="text.secondary" sx={{ mb: 3, fontSize: { xs: '1rem', sm: '1.1rem' }, lineHeight: 1.6 }}>{message}</Typography>
             <Typography variant="h6" color="text.secondary" sx={{ mb: 2, fontSize: { xs: '1rem', sm: '1.25rem' } }}>Expected to be back by:</Typography>
-            <Typography variant="h5" sx={{ fontWeight: 600, color: '#ff9a56', mb: 3, fontSize: { xs: '1.25rem', sm: '1.5rem' }, wordBreak: 'break-word' }}>{endDate}</Typography>
+            <Typography variant="h5" sx={{ fontWeight: 600, color: '#616161', mb: 3, fontSize: { xs: '1.25rem', sm: '1.5rem' }, wordBreak: 'break-word' }}>{endDate}</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.875rem', sm: '1rem' } }}>Thank you for your patience!</Typography>
           </Paper>
         </Container>

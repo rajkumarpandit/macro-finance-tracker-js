@@ -100,7 +100,7 @@ function ForgotPassword() {
             <LockResetIcon 
               sx={{ 
                 fontSize: 48, 
-                color: '#ff9a56', 
+                color: '#616161', 
                 mb: 1 
               }} 
             />
@@ -144,10 +144,11 @@ function ForgotPassword() {
               disabled={loading || !!message}
               sx={{
                 py: 1.5,
-                background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
+                background: 'linear-gradient(135deg, #424242 0%, #212121 100%)',
+                color: '#ffffff',
                 mb: 2,
                 '&:hover': {
-                  background: 'linear-gradient(135deg, #ffc299 0%, #ff9a56 100%)',
+                  background: 'linear-gradient(135deg, #616161 0%, #424242 100%)',
                 }
               }}
             >
@@ -160,7 +161,7 @@ function ForgotPassword() {
                 <Link 
                   to="/login" 
                   style={{ 
-                    color: '#ff9a56', 
+                    color: '#616161', 
                     textDecoration: 'none',
                     fontWeight: 'bold'
                   }}

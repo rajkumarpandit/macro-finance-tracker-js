@@ -135,7 +135,7 @@ function AppMaintenance() {
   if (loading) {
     return (
       <Box sx={{ minHeight: '100vh', bgcolor: '#f5f7fa', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
-        <CircularProgress sx={{ color: '#ff9a56' }} />
+        <CircularProgress sx={{ color: '#616161' }} />
       </Box>
     );
   }
@@ -160,10 +160,10 @@ function AppMaintenance() {
                 onChange={(e) => setMaintenanceEnabled(e.target.checked)}
                 sx={{
                   '& .MuiSwitch-switchBase.Mui-checked': {
-                    color: '#ff9800',
+                    color: '#757575',
                   },
                   '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                    backgroundColor: '#ff9800',
+                    backgroundColor: '#757575',
                   },
                 }}
               />
@@ -191,8 +191,8 @@ function AppMaintenance() {
               mb: 3,
               '& .MuiOutlinedInput-root': {
                 borderRadius: 2,
-                '&:hover fieldset': { borderColor: '#ff9800' },
-                '&.Mui-focused fieldset': { borderColor: '#ff9800' }
+                '&:hover fieldset': { borderColor: '#757575' },
+                '&.Mui-focused fieldset': { borderColor: '#757575' }
               }
             }}
             helperText="This will be displayed to users on the maintenance page"
@@ -210,8 +210,8 @@ function AppMaintenance() {
               mb: 3,
               '& .MuiOutlinedInput-root': {
                 borderRadius: 2,
-                '&:hover fieldset': { borderColor: '#ff9800' },
-                '&.Mui-focused fieldset': { borderColor: '#ff9800' }
+                '&:hover fieldset': { borderColor: '#757575' },
+                '&.Mui-focused fieldset': { borderColor: '#757575' }
               }
             }}
             helperText="Custom message to display to users"
@@ -235,8 +235,8 @@ function AppMaintenance() {
               mb: 3,
               '& .MuiOutlinedInput-root': {
                 borderRadius: 2,
-                '&:hover fieldset': { borderColor: '#ff9a56' },
-                '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                '&:hover fieldset': { borderColor: '#616161' },
+                '&.Mui-focused fieldset': { borderColor: '#616161' }
               }
             }}
             helperText="Default: 40"
@@ -259,8 +259,8 @@ function AppMaintenance() {
               mb: 3,
               '& .MuiOutlinedInput-root': {
                 borderRadius: 2,
-                '&:hover fieldset': { borderColor: '#ff9a56' },
-                '&.Mui-focused fieldset': { borderColor: '#ff9a56' }
+                '&:hover fieldset': { borderColor: '#616161' },
+                '&.Mui-focused fieldset': { borderColor: '#616161' }
               }
             }}
             helperText="Default: 100"
@@ -279,7 +279,8 @@ function AppMaintenance() {
               textTransform: 'none',
               fontSize: '1rem',
               fontWeight: 600,
-              background: 'linear-gradient(135deg, #ffb380 0%, #ff8533 100%)',
+              background: 'linear-gradient(135deg, #424242 0%, #212121 100%)',
+              color: '#ffffff',
               '&:hover': {
                 background: 'linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%)',
               },
