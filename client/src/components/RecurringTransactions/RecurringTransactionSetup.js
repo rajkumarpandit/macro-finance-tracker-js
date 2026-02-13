@@ -48,7 +48,8 @@ function RecurringTransactionSetup() {
     transactionDesc: '',
     accountId: '',
     accountName: '',
-    recurrenceType: 'template'
+    recurrenceType: 'template',
+    expenseHead: ''
   });
 
   // UI state
@@ -67,7 +68,7 @@ function RecurringTransactionSetup() {
 
   // Dropdown options
   const currencies = ['INR', 'USD', 'EUR', 'GBP', 'AED'];
-  const types = ['EMI', 'Subscription', 'SIP', 'Premium', 'Others'];
+  const types = ['EMI', 'Subscription', 'SIP', 'Premium', 'Bills', 'Others'];
   const dueDays = Array.from({ length: 31 }, (_, i) => (i + 1).toString());
 
   // Fetch recurring transactions
@@ -285,7 +286,9 @@ function RecurringTransactionSetup() {
         dueBy: '1',
         usualPaymentMode: 'UPI',
         category: 'Recurring',
-        transactionDesc: ''
+        transactionDesc: '',
+        recurrenceType: 'template',
+        expenseHead: ''
       });
       setEditingId(null);
 
@@ -314,7 +317,11 @@ function RecurringTransactionSetup() {
       dueBy: transaction.dueBy.toString(),
       usualPaymentMode: transaction.usualPaymentMode || 'UPI',
       category: transaction.category || 'Recurring',
-      transactionDesc: transaction.transactionDesc || ''
+      transactionDesc: transaction.transactionDesc || '',
+      accountId: transaction.accountId || '',
+      accountName: transaction.accountName || '',
+      recurrenceType: transaction.recurrenceType || 'template',
+      expenseHead: transaction.expenseHead || ''
     });
     setEditingId(transaction.id);
     setError('');
@@ -347,17 +354,44 @@ function RecurringTransactionSetup() {
   const handleCancelEdit = () => {
     setFormData({
       transactionName: '',
-      forDescription: '',
       amount: '',
       currency: 'INR',
       frequency: 'monthly',
       type: 'Others',
       merchant: '',
       dueBy: '1',
-      usualPaymentMode: 'UPI'
+      usualPaymentMode: 'UPI',
+      category: 'Recurring',
+      transactionDesc: '',
+      accountId: '',
+      accountName: '',
+      recurrenceType: 'template',
+      expenseHead: ''
     });
     setEditingId(null);
     setError('');
+  };
+
+  // Handle reset form
+  const handleReset = () => {
+    setFormData({
+      transactionName: '',
+      amount: '',
+      currency: 'INR',
+      frequency: 'monthly',
+      type: 'Others',
+      merchant: '',
+      dueBy: '1',
+      usualPaymentMode: 'UPI',
+      category: 'Recurring',
+      transactionDesc: '',
+      accountId: '',
+      accountName: '',
+      recurrenceType: 'template',
+      expenseHead: ''
+    });
+    setError('');
+    setSuccess('');
   };
 
   return (
@@ -612,7 +646,7 @@ function RecurringTransactionSetup() {
                   <em>Select Expense Head</em>
                 </MenuItem>
                 {expenseHeads.map(head => (
-                  <MenuItem key={head} value={head}>{head}</MenuItem>
+                  <MenuItem key={head.id} value={head.name}>{head.name}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -625,9 +659,9 @@ function RecurringTransactionSetup() {
                 variant="contained"
                 onClick={handleSave}
                 disabled={saving}
-                fullWidth
                 size="small"
                 sx={{
+                  flex: 1,
                   background: 'linear-gradient(135deg, #424242 0%, #212121 100%)',
                   color: '#ffffff',
                   py: 1,
@@ -641,6 +675,28 @@ function RecurringTransactionSetup() {
                 }}
               >
                 {saving ? <CircularProgress size={20} color="inherit" /> : (editingId ? 'Update' : 'Save')}
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={handleReset}
+                disabled={saving}
+                size="small"
+                sx={{
+                  minWidth: '80px',
+                  py: 1,
+                  borderRadius: 1,
+                  textTransform: 'none',
+                  fontSize: '0.875rem',
+                  fontWeight: 600,
+                  borderColor: '#1976d2',
+                  color: '#1976d2',
+                  '&:hover': {
+                    borderColor: '#1565c0',
+                    bgcolor: '#e3f2fd'
+                  }
+                }}
+              >
+                Reset
               </Button>
               {editingId && (
                 <Button

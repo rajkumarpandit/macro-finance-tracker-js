@@ -637,12 +637,12 @@ function ReportPage() {
                   />
                   <Tab 
                     icon={<TodayIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />} 
-                    label="Date" 
+                    label="T/Date" 
                     iconPosition="start"
                   />
                   <Tab 
                     icon={<CategoryIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />} 
-                    label="Head" 
+                    label="E/Head" 
                     iconPosition="start"
                   />
                   <Tab 
@@ -1242,14 +1242,6 @@ function ReportPage() {
                         }}>
                           Date
                         </TableCell>
-                        <TableCell sx={{ 
-                          fontWeight: 700, 
-                          fontSize: { xs: '0.65rem', sm: '0.75rem' },
-                          bgcolor: '#ffffff',
-                          py: { xs: 0.5, sm: 1 }
-                        }}>
-                          Bank Acct
-                        </TableCell>
                         <TableCell 
                           align="right" 
                           sx={{ 
@@ -1269,6 +1261,14 @@ function ReportPage() {
                         }}>
                           Description
                         </TableCell>
+                        <TableCell sx={{ 
+                          fontWeight: 700, 
+                          fontSize: { xs: '0.65rem', sm: '0.75rem' },
+                          bgcolor: '#ffffff',
+                          py: { xs: 0.5, sm: 1 }
+                        }}>
+                          Bank Account
+                        </TableCell>
                       </TableRow>
                     </TableHead>
                     <TableBody>
@@ -1285,12 +1285,6 @@ function ReportPage() {
                             py: { xs: 0.75, sm: 1 }
                           }}>
                             {formatDate(transaction.date)}
-                          </TableCell>
-                          <TableCell sx={{ 
-                            fontSize: { xs: '0.65rem', sm: '0.75rem' },
-                            py: { xs: 0.75, sm: 1 }
-                          }}>
-                            {transaction.accountName || 'Cash'}
                           </TableCell>
                           <TableCell 
                             align="right" 
@@ -1309,6 +1303,12 @@ function ReportPage() {
                             maxWidth: { xs: 150, sm: 300 }
                           }}>
                             {transaction.transactionDesc || transaction.description || 'N/A'}
+                          </TableCell>
+                          <TableCell sx={{ 
+                            fontSize: { xs: '0.65rem', sm: '0.75rem' },
+                            py: { xs: 0.75, sm: 1 }
+                          }}>
+                            {transaction.accountName || 'Cash'}
                           </TableCell>
                         </TableRow>
                       ))}

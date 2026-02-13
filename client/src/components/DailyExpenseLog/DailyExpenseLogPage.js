@@ -266,6 +266,7 @@ function DailyExpenseLogPage() {
       bankSnapshot.forEach((doc) => {
         bankList.push({ id: doc.id, ...doc.data() });
       });
+      
       setBankAccounts(bankList);
     } catch (error) {
       console.error('Error fetching bank accounts:', error);
@@ -674,6 +675,7 @@ function DailyExpenseLogPage() {
 
     // Validate transaction date is not in future
     const transactionDate = new Date(parsedData.date);
+    transactionDate.setHours(0, 0, 0, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (transactionDate > today) {
@@ -894,6 +896,7 @@ function DailyExpenseLogPage() {
 
     // Validate transaction date is not in future
     const transactionDate = new Date(recurringData.date);
+    transactionDate.setHours(0, 0, 0, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (transactionDate > today) {
@@ -1167,6 +1170,7 @@ function DailyExpenseLogPage() {
 
     // Validate transaction date is not in future
     const transactionDate = new Date(templateData.date);
+    transactionDate.setHours(0, 0, 0, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (transactionDate > today) {
@@ -1362,6 +1366,7 @@ function DailyExpenseLogPage() {
 
     // Validate transaction date is not in future
     const transactionDate = new Date(manualData.date);
+    transactionDate.setHours(0, 0, 0, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (transactionDate > today) {
@@ -1561,6 +1566,7 @@ function DailyExpenseLogPage() {
 
     // Validate transaction date is not in future
     const transactionDate = new Date(incomeData.date);
+    transactionDate.setHours(0, 0, 0, 0);
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     if (transactionDate > today) {
@@ -1963,8 +1969,8 @@ function DailyExpenseLogPage() {
                 </Grid>
               )}
 
-              {/* Row 4: Transaction Description */}
-              <Grid item xs={12}>
+              {/* Row 4: Transaction Description and Expense Head */}
+              <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="Transaction Description"
@@ -1975,7 +1981,6 @@ function DailyExpenseLogPage() {
                 />
               </Grid>
 
-              {/* Row 5: Expense Head */}
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Expense Head</InputLabel>
@@ -1994,7 +1999,7 @@ function DailyExpenseLogPage() {
                 </FormControl>
               </Grid>
 
-              {/* Row 6: Category and Transaction Type as Text Labels */}
+              {/* Row 5: Category and Transaction Type as Text Labels */}
               <Grid item xs={12} sm={6}>
                 <Box sx={{ display: 'flex', gap: 3, alignItems: 'center', height: '100%', pl: 1 }}>
                   <Box>
@@ -2272,8 +2277,8 @@ function DailyExpenseLogPage() {
                     </Grid>
                   )}
 
-                  {/* Row 4: Transaction Description */}
-                  <Grid item xs={12}>
+                  {/* Row 4: Transaction Description and Expense Head */}
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Transaction Description"
@@ -2291,7 +2296,6 @@ function DailyExpenseLogPage() {
                     />
                   </Grid>
 
-                  {/* Row 5: Expense Head */}
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Expense Head</InputLabel>
@@ -2315,7 +2319,7 @@ function DailyExpenseLogPage() {
                     </FormControl>
                   </Grid>
 
-                  {/* Row 6: Category and Transaction Type as Text Labels */}
+                  {/* Row 5: Category and Transaction Type as Text Labels */}
                   <Grid item xs={12} sm={6}>
                     <Box sx={{ display: 'flex', gap: 3, alignItems: 'center', height: '100%', pl: 1 }}>
                       <Box>
@@ -2516,8 +2520,8 @@ function DailyExpenseLogPage() {
                     </Grid>
                   )}
 
-                  {/* Row 4: Transaction Description */}
-                  <Grid item xs={12}>
+                  {/* Row 4: Transaction Description and Expense Head */}
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Transaction Description"
@@ -2535,7 +2539,6 @@ function DailyExpenseLogPage() {
                     />
                   </Grid>
 
-                  {/* Row 5: Expense Head */}
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Expense Head</InputLabel>
@@ -2559,7 +2562,7 @@ function DailyExpenseLogPage() {
                     </FormControl>
                   </Grid>
 
-                  {/* Row 6: Category and Transaction Type as Text Labels */}
+                  {/* Row 5: Category and Transaction Type as Text Labels */}
                   <Grid item xs={12} sm={6}>
                     <Box sx={{ display: 'flex', gap: 3, alignItems: 'center', height: '100%', pl: 1 }}>
                       <Box>
@@ -2687,6 +2690,7 @@ function DailyExpenseLogPage() {
                       label="Category"
                       value={recurringData.category}
                       disabled
+                      size="small"
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
@@ -2703,6 +2707,7 @@ function DailyExpenseLogPage() {
                       label="Merchant"
                       value={recurringData.merchant}
                       disabled
+                      size="small"
                       sx={{
                         '& .MuiOutlinedInput-root': {
                           borderRadius: 2,
@@ -2788,6 +2793,7 @@ function DailyExpenseLogPage() {
                             const selectedId = e.target.value;
                             const accounts = getAvailableAccounts(recurringData.paymentMode);
                             const selected = accounts.find(acc => acc.id === selectedId);
+                            
                             handleRecurringFieldChange('accountId', selectedId);
                             handleRecurringFieldChange('accountName', selected ? (selected.accountNickName || selected.nickName) : '');
                           }}
@@ -2810,8 +2816,8 @@ function DailyExpenseLogPage() {
                     </Grid>
                   )}
 
-                  {/* Row 5: Transaction Description */}
-                  <Grid item xs={12}>
+                  {/* Row 5: Transaction Description and Expense Head */}
+                  <Grid item xs={12} sm={6}>
                     <TextField
                       fullWidth
                       label="Transaction Description"
@@ -2829,7 +2835,6 @@ function DailyExpenseLogPage() {
                     />
                   </Grid>
 
-                  {/* Row 6: Expense Head */}
                   <Grid item xs={12} sm={6}>
                     <FormControl fullWidth size="small">
                       <InputLabel>Expense Head</InputLabel>
@@ -2932,6 +2937,7 @@ function DailyExpenseLogPage() {
                   label="Transaction Type"
                   value="Income"
                   disabled
+                  size="small"
                   sx={{
                     '& .MuiOutlinedInput-root': {
                       borderRadius: 2,
@@ -2941,9 +2947,9 @@ function DailyExpenseLogPage() {
                 />
               </Grid>
 
-              {/* Row 2: Category Dropdown */}
+              {/* Row 2: Category */}
               <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
+                <FormControl fullWidth size="small">
                   <InputLabel>Category</InputLabel>
                   <Select
                     value={incomeData.category}
@@ -2962,46 +2968,7 @@ function DailyExpenseLogPage() {
                 </FormControl>
               </Grid>
 
-              {/* Row 3: Transaction Description */}
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  label="Transaction Description"
-                  value={incomeData.transactionDesc}
-                  onChange={(e) => handleIncomeFieldChange('transactionDesc', e.target.value)}
-                  placeholder="e.g., Monthly salary from company"
-                  sx={{
-                    '& .MuiOutlinedInput-root': {
-                      borderRadius: 2,
-                      '&:hover fieldset': { borderColor: '#616161' },
-                      '&.Mui-focused fieldset': { borderColor: '#616161' }
-                    }
-                  }}
-                />
-              </Grid>
-
-              {/* Row 4: Income Source */}
-              <Grid item xs={12} sm={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Income Source</InputLabel>
-                  <Select
-                    value={incomeData.expenseHead}
-                    label="Income Source"
-                    onChange={(e) => handleIncomeFieldChange('expenseHead', e.target.value)}
-                    sx={{
-                      borderRadius: 2,
-                      '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                      '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
-                    }}
-                  >
-                    {incomeSources.map(source => (
-                      <MenuItem key={source} value={source}>{source}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              {/* Row 5: Amount and Currency */}
+              {/* Row 3: Amount and Currency */}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -3041,7 +3008,7 @@ function DailyExpenseLogPage() {
                 </FormControl>
               </Grid>
 
-              {/* Row 6: Payment Mode */}
+              {/* Row 4: Payment Mode */}
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Payment Mode</InputLabel>
@@ -3076,6 +3043,7 @@ function DailyExpenseLogPage() {
                         const selectedId = e.target.value;
                         const accounts = getAvailableAccounts(incomeData.paymentMode);
                         const selected = accounts.find(acc => acc.id === selectedId);
+                        
                         handleIncomeFieldChange('accountId', selectedId);
                         handleIncomeFieldChange('accountName', selected ? (selected.accountNickName || selected.nickName) : '');
                       }}
@@ -3098,8 +3066,8 @@ function DailyExpenseLogPage() {
                 </Grid>
               )}
 
-              {/* Row 4: Transaction Description */}
-              <Grid item xs={12}>
+              {/* Row 5: Transaction Description and Income Source */}
+              <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
                   label="Transaction Description"
@@ -3117,7 +3085,6 @@ function DailyExpenseLogPage() {
                 />
               </Grid>
 
-              {/* Row 5: Income Source */}
               <Grid item xs={12} sm={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Income Source</InputLabel>
@@ -3288,10 +3255,10 @@ function DailyExpenseLogPage() {
                         <TableHead>
                           <TableRow sx={{ bgcolor: '#f5f5f5' }}>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Date</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Amount</TableCell>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Description</TableCell>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Bank Account</TableCell>
                             <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Payment</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Amount</TableCell>
                             <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Actions</TableCell>
                           </TableRow>
                         </TableHead>
@@ -3306,6 +3273,25 @@ function DailyExpenseLogPage() {
                             >
                               <TableCell sx={{ fontSize: '0.75rem', py: 1, whiteSpace: 'nowrap' }}>
                                 {transaction.date?.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
+                              </TableCell>
+                              <TableCell align="right" sx={{ fontSize: '0.75rem', py: 1, fontWeight: 600 }}>
+                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
+                                  {transaction.type === 'income' ? (
+                                    <TrendingUpIcon sx={{ color: '#4caf50', fontSize: 16 }} />
+                                  ) : (
+                                    <TrendingDownIcon sx={{ color: '#f44336', fontSize: 16 }} />
+                                  )}
+                                  <Typography 
+                                    variant="body2" 
+                                    sx={{ 
+                                      color: transaction.type === 'income' ? '#4caf50' : '#f44336',
+                                      fontWeight: 600,
+                                      fontSize: '0.75rem'
+                                    }}
+                                  >
+                                    {formatCurrency(transaction.amount, transaction.currency)}
+                                  </Typography>
+                                </Box>
                               </TableCell>
                               <TableCell sx={{ fontSize: '0.75rem', py: 1, maxWidth: 200 }}>
                                 <Box>
@@ -3337,25 +3323,6 @@ function DailyExpenseLogPage() {
                                   variant="outlined" 
                                   sx={{ fontSize: '0.65rem', height: '20px' }} 
                                 />
-                              </TableCell>
-                              <TableCell align="right" sx={{ fontSize: '0.75rem', py: 1, fontWeight: 600 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
-                                  {transaction.type === 'income' ? (
-                                    <TrendingUpIcon sx={{ color: '#4caf50', fontSize: 16 }} />
-                                  ) : (
-                                    <TrendingDownIcon sx={{ color: '#f44336', fontSize: 16 }} />
-                                  )}
-                                  <Typography 
-                                    variant="body2" 
-                                    sx={{ 
-                                      color: transaction.type === 'income' ? '#4caf50' : '#f44336',
-                                      fontWeight: 600,
-                                      fontSize: '0.75rem'
-                                    }}
-                                  >
-                                    {formatCurrency(transaction.amount, transaction.currency)}
-                                  </Typography>
-                                </Box>
                               </TableCell>
                               <TableCell align="center" sx={{ py: 1 }}>
                                 <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
@@ -3497,6 +3464,7 @@ function DailyExpenseLogPage() {
                       const selectedId = e.target.value;
                       const accounts = getAvailableAccounts(editingTransaction?.paymentMode);
                       const selected = accounts.find(acc => acc.id === selectedId);
+                      
                       setEditingTransaction({
                         ...editingTransaction,
                         accountId: selectedId,

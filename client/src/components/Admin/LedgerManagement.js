@@ -38,6 +38,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import DeleteIcon from '@mui/icons-material/Delete';
+import EditIcon from '@mui/icons-material/Edit';
 import { useAuth } from '../Auth/AuthContext';
 import { db } from '../../firebase/firebase';
 import { collection, addDoc, query, where, getDocs, updateDoc, doc, Timestamp, orderBy, limit } from 'firebase/firestore';
@@ -64,6 +65,7 @@ function LedgerManagement({ showHeader = false }) {
   const [ledgerMetrics, setLedgerMetrics] = useState(null);
   const [editableOpeningBalance, setEditableOpeningBalance] = useState('');
   const [editableOpeningDate, setEditableOpeningDate] = useState('');
+  const [openingEditable, setOpeningEditable] = useState(false);
   
   // Account balances for ledger
   const [bankAccounts, setBankAccounts] = useState([]);
@@ -139,71 +141,34 @@ function LedgerManagement({ showHeader = false }) {
     // Calculate per-account closing balances
     const accountClosingBalances = {};
     if (ledger.accountBalances && Array.isArray(ledger.accountBalances)) {
-      console.log('=== ACCOUNT BALANCE CALCULATION DEBUG ===');
-      console.log('Ledger Account Balances:', ledger.accountBalances);
-      console.log('Total Valid Transactions:', validTxns.length);
-      
       ledger.accountBalances.forEach(account => {
         const accountId = account.accountId;
         const accountOpening = parseFloat(account.openingBalance) || 0;
         const isCreditCard = account.accountType === 'creditCard';
         
-        console.log(`\n--- Account: ${account.accountName} (${account.accountType}) ---`);
-        console.log('Opening Balance:', accountOpening);
-        
-        // Get transactions for this specific account
+        // Get transactions for this specific account (match by accountId only)
         const accountTxns = validTxns.filter(t => t.accountId === accountId);
-        console.log('Transactions for this account:', accountTxns.length);
         
-        // Log all transactions for this account
-        console.log('\n=== ALL TRANSACTIONS FOR THIS ACCOUNT ===');
-        accountTxns.forEach((t, idx) => {
-          const amountINR = getINRAmount(t);
-          console.log(`${idx + 1}. ${t.date} | ${t.type.toUpperCase()} | ${t.description} | ${t.currency} ${t.amount} (INR: ${amountINR.toFixed(2)})`);
-        });
+        // Calculate income and expenses
+        const accountIncome = accountTxns
+          .filter(t => t.type === 'income')
+          .reduce((sum, t) => sum + getINRAmount(t), 0);
         
-        // Detailed income calculation
-        const incomeTxns = accountTxns.filter(t => t.type === 'income');
-        console.log('\n=== INCOME TRANSACTIONS ===');
-        console.log(`Count: ${incomeTxns.length}`);
-        incomeTxns.forEach((t, idx) => {
-          const amountINR = getINRAmount(t);
-          console.log(`${idx + 1}. ${t.date} | ${t.description} | ${t.currency} ${t.amount} = INR ${amountINR.toFixed(2)}`);
-        });
-        const accountIncome = incomeTxns.reduce((sum, t) => sum + getINRAmount(t), 0);
-        console.log('Total Account Income:', accountIncome.toFixed(2));
-        
-        // Detailed expense calculation
-        const expenseTxns = accountTxns.filter(t => t.type === 'expense');
-        console.log('\n=== EXPENSE TRANSACTIONS ===');
-        console.log(`Count: ${expenseTxns.length}`);
-        expenseTxns.forEach((t, idx) => {
-          const amountINR = getINRAmount(t);
-          console.log(`${idx + 1}. ${t.date} | ${t.description} | ${t.currency} ${t.amount} = INR ${amountINR.toFixed(2)}`);
-        });
-        const accountExpenses = expenseTxns.reduce((sum, t) => sum + getINRAmount(t), 0);
-        console.log('Total Account Expenses:', accountExpenses.toFixed(2));
+        const accountExpenses = accountTxns
+          .filter(t => t.type === 'expense')
+          .reduce((sum, t) => sum + getINRAmount(t), 0);
         
         let closingBal;
         if (isCreditCard) {
           // For credit cards: Opening (debt) + Expenses (purchases) - Income (payments)
-          // Income here represents payments TO the card, which reduce debt
           closingBal = accountOpening + accountExpenses - accountIncome;
-          console.log('Calculated Closing Balance (Credit Card):', closingBal);
-          console.log('Formula: Opening + Expenses - Income (payments) =', `${accountOpening} + ${accountExpenses} - ${accountIncome} = ${closingBal}`);
         } else {
           // For bank accounts: Opening + Income - Expenses
           closingBal = accountOpening + accountIncome - accountExpenses;
-          console.log('Calculated Closing Balance (Bank):', closingBal);
-          console.log('Formula: Opening + Income - Expenses =', `${accountOpening} + ${accountIncome} - ${accountExpenses} = ${closingBal}`);
         }
         
         accountClosingBalances[accountId] = closingBal;
       });
-      
-      console.log('\n=== FINAL ACCOUNT CLOSING BALANCES ===');
-      console.log(accountClosingBalances);
-      console.log('=== END DEBUG ===\n');
     }
     
     const runningOutflowBankAccount = upiExpenses + bankTransferExpenses;
@@ -248,14 +213,20 @@ function LedgerManagement({ showHeader = false }) {
       // Fetch all ledgers
       const allQuery = query(
         collection(db, 'ledgers'),
-        where('userId', '==', currentUser.uid),
-        orderBy('createdAt', 'desc')
+        where('userId', '==', currentUser.uid)
       );
       const allSnapshot = await getDocs(allQuery);
-      setAllLedgers(allSnapshot.docs.map(doc => ({
+      const ledgersList = allSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      })));
+      }));
+      // Sort by createdAt in frontend to avoid composite index requirement
+      ledgersList.sort((a, b) => {
+        const dateA = a.createdAt?.toDate() || new Date(0);
+        const dateB = b.createdAt?.toDate() || new Date(0);
+        return dateB - dateA;
+      });
+      setAllLedgers(ledgersList);
     } catch (error) {
       console.error('Error fetching ledgers:', error);
     } finally {
@@ -655,127 +626,6 @@ function LedgerManagement({ showHeader = false }) {
             </Box>
             
             {/* Editable Fields */}
-            <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Opening Date"
-                  type="date"
-                  value={editableOpeningDate}
-                  onChange={(e) => setEditableOpeningDate(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  size="small"
-                />
-              </Grid>
-            </Grid>
-
-            {/* Account Opening Balances */}
-            <Typography variant="subtitle2" sx={{ mt: 1.5, mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
-              Account Opening Balances
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, fontSize: '0.8rem' }}>
-              Add all accounts and credit cards with their opening balances. 
-              Credit cards should be entered as negative values (debt).
-            </Typography>
-
-            {accountBalances.map((account, index) => (
-              <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
-                <FormControl sx={{ width: 280 }} size="small">
-                  <InputLabel>Account/Card</InputLabel>
-                  <Select
-                    value={account.accountId}
-                    label="Account/Card"
-                    onChange={(e) => handleAccountChange(index, 'accountId', e.target.value)}
-                  >
-                    <MenuItem value="">
-                      <em>Select...</em>
-                    </MenuItem>
-                    {bankAccounts.length > 0 && [
-                      <MenuItem key="bank-header" disabled sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>
-                        BANK ACCOUNTS
-                      </MenuItem>,
-                      ...bankAccounts.map(acc => (
-                        <MenuItem key={acc.id} value={acc.id}>
-                          {acc.accountNickName}
-                        </MenuItem>
-                      ))
-                    ]}
-                    {creditCards.length > 0 && [
-                      <MenuItem key="cc-header" disabled sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary', mt: 1 }}>
-                        CREDIT CARDS
-                      </MenuItem>,
-                      ...creditCards.map(card => (
-                        <MenuItem key={card.id} value={card.id}>
-                          {card.nickName}
-                        </MenuItem>
-                      ))
-                    ]}
-                  </Select>
-                </FormControl>
-
-                <TextField
-                  sx={{ flex: 1, minWidth: 200 }}
-                  label="Opening Balance"
-                  type="number"
-                  size="small"
-                  value={account.openingBalance}
-                  onChange={(e) => handleAccountChange(index, 'openingBalance', e.target.value)}
-                  placeholder={account.accountType === 'creditCard' ? 'Negative for debt' : '0.00'}
-                  inputProps={{ step: '0.01' }}
-                />
-
-                <IconButton
-                  onClick={() => handleRemoveAccountRow(index)}
-                  disabled={accountBalances.length === 1}
-                  color="error"
-                  size="small"
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </Box>
-            ))}
-
-            {accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').length > 0 && (
-              <Alert severity="info" sx={{ mb: 1.5, py: 0.5, fontSize: '0.85rem' }}>
-                <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>
-                  Total Opening Balance: ₹{accountBalances
-                    .filter(acc => acc.accountId && acc.openingBalance !== '')
-                    .reduce((sum, acc) => {
-                      const balance = parseFloat(acc.openingBalance) || 0;
-                      return acc.accountType === 'creditCard' ? sum - Math.abs(balance) : sum + balance;
-                    }, 0)
-                    .toFixed(2)}
-                </Typography>
-                <Typography variant="caption" display="block" sx={{ fontSize: '0.7rem' }}>
-                  (Bank Accounts - Credit Card Debt)
-                </Typography>
-              </Alert>
-            )}
-
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1.5, mb: 2 }}>
-              <IconButton
-                onClick={handleAddAccountRow}
-                color="primary"
-                size="small"
-                sx={{ 
-                  border: '1px solid',
-                  borderColor: 'primary.main',
-                  borderRadius: 1
-                }}
-              >
-                <AddIcon />
-              </IconButton>
-              <Button
-                variant="contained"
-                size="small"
-                onClick={handleUpdateOpeningDetails}
-                disabled={!editableOpeningDate || accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').length === 0}
-              >
-                Save Open Ledger
-              </Button>
-            </Box>
-
-            <Divider sx={{ my: 2 }} />
 
             {/* Account Closing Balances */}
             <Typography variant="subtitle2" sx={{ mt: 1.5, mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
@@ -828,6 +678,142 @@ function LedgerManagement({ showHeader = false }) {
                 </Typography>
               </Alert>
             )}
+
+            <Divider sx={{ my: 2 }} />
+
+            {/* Account Opening Balances */}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1.5, mb: 0.5 }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
+                Account Opening Balances
+              </Typography>
+              <IconButton
+                size="small"
+                color={openingEditable ? 'primary' : 'default'}
+                onClick={() => setOpeningEditable(!openingEditable)}
+                title={openingEditable ? 'Lock editing' : 'Edit opening balances'}
+              >
+                <EditIcon fontSize="small" />
+              </IconButton>
+            </Box>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, fontSize: '0.8rem' }}>
+              {openingEditable ? 'Edit mode: modify accounts and balances below.' : 'Read-only. Click the edit button to make changes.'}
+            </Typography>
+
+            <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
+              <Grid item xs={12} sm={6}>
+                <TextField
+                  fullWidth
+                  label="Opening Date"
+                  type="date"
+                  value={editableOpeningDate}
+                  onChange={(e) => setEditableOpeningDate(e.target.value)}
+                  InputLabelProps={{ shrink: true }}
+                  size="small"
+                  disabled={!openingEditable}
+                />
+              </Grid>
+            </Grid>
+
+            {accountBalances.map((account, index) => (
+              <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
+                <FormControl sx={{ width: 280 }} size="small" disabled={!openingEditable}>
+                  <InputLabel>Account/Card</InputLabel>
+                  <Select
+                    value={account.accountId}
+                    label="Account/Card"
+                    onChange={(e) => handleAccountChange(index, 'accountId', e.target.value)}
+                  >
+                    <MenuItem value="">
+                      <em>Select...</em>
+                    </MenuItem>
+                    {bankAccounts.length > 0 && [
+                      <MenuItem key="bank-header" disabled sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>
+                        BANK ACCOUNTS
+                      </MenuItem>,
+                      ...bankAccounts.map(acc => (
+                        <MenuItem key={acc.id} value={acc.id}>
+                          {acc.accountNickName}
+                        </MenuItem>
+                      ))
+                    ]}
+                    {creditCards.length > 0 && [
+                      <MenuItem key="cc-header" disabled sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary', mt: 1 }}>
+                        CREDIT CARDS
+                      </MenuItem>,
+                      ...creditCards.map(card => (
+                        <MenuItem key={card.id} value={card.id}>
+                          {card.nickName}
+                        </MenuItem>
+                      ))
+                    ]}
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  sx={{ flex: 1, minWidth: 200 }}
+                  label="Opening Balance"
+                  type="number"
+                  size="small"
+                  value={account.openingBalance}
+                  onChange={(e) => handleAccountChange(index, 'openingBalance', e.target.value)}
+                  placeholder={account.accountType === 'creditCard' ? 'Negative for debt' : '0.00'}
+                  inputProps={{ step: '0.01' }}
+                  disabled={!openingEditable}
+                />
+
+                <IconButton
+                  onClick={() => handleRemoveAccountRow(index)}
+                  disabled={accountBalances.length === 1 || !openingEditable}
+                  color="error"
+                  size="small"
+                >
+                  <DeleteIcon />
+                </IconButton>
+              </Box>
+            ))}
+
+            {accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').length > 0 && (
+              <Alert severity="info" sx={{ mb: 1.5, py: 0.5, fontSize: '0.85rem' }}>
+                <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>
+                  Total Opening Balance: ₹{accountBalances
+                    .filter(acc => acc.accountId && acc.openingBalance !== '')
+                    .reduce((sum, acc) => {
+                      const balance = parseFloat(acc.openingBalance) || 0;
+                      return acc.accountType === 'creditCard' ? sum - Math.abs(balance) : sum + balance;
+                    }, 0)
+                    .toFixed(2)}
+                </Typography>
+                <Typography variant="caption" display="block" sx={{ fontSize: '0.7rem' }}>
+                  (Bank Accounts - Credit Card Debt)
+                </Typography>
+              </Alert>
+            )}
+
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1.5, mb: 2 }}>
+              {openingEditable && (
+                <IconButton
+                  onClick={handleAddAccountRow}
+                  color="primary"
+                  size="small"
+                  sx={{ 
+                    border: '1px solid',
+                    borderColor: 'primary.main',
+                    borderRadius: 1
+                  }}
+                >
+                  <AddIcon />
+                </IconButton>
+              )}
+              <Button
+                variant="contained"
+                size="small"
+                onClick={handleUpdateOpeningDetails}
+                disabled={!openingEditable || !editableOpeningDate || accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').length === 0}
+                sx={{ minWidth: 140, color: '#ffffff !important' }}
+              >
+                Save Open Ledger
+              </Button>
+            </Box>
 
             {/* Expandable Calculated Metrics */}
             <Box sx={{ mb: 1.5 }}>
@@ -891,7 +877,7 @@ function LedgerManagement({ showHeader = false }) {
                 size="small"
                 startIcon={<LockIcon fontSize="small" />}
                 onClick={handleCloseLedger}
-                sx={{ textTransform: 'none', fontSize: '0.875rem' }}
+                sx={{ minWidth: 140 }}
               >
                 Close Ledger
               </Button>
@@ -931,7 +917,7 @@ function LedgerManagement({ showHeader = false }) {
             {allLedgers.map((ledger) => (
               <React.Fragment key={ledger.id}>
                 <ListItem
-                  sx={{ py: 1.5, px: 1 }}
+                  sx={{ py: 1.5, px: 1, flexDirection: 'column', alignItems: 'stretch' }}
                   secondaryAction={
                     ledger.status === 'closed' && (
                       <IconButton size="small" edge="end" onClick={() => handleViewLedgerDetails(ledger)}>
@@ -977,6 +963,29 @@ function LedgerManagement({ showHeader = false }) {
                       </Box>
                     }
                   />
+                  {/* Account-wise Opening & Closing Balances */}
+                  {ledger.accountBalances && ledger.accountBalances.length > 0 && (
+                    <Box sx={{ mt: 1, ml: 1, mr: 5 }}>
+                      <Table size="small" sx={{ '& td, & th': { py: 0.3, px: 0.5, fontSize: '0.75rem', border: 'none' } }}>
+                        <TableBody>
+                          <TableRow sx={{ bgcolor: '#f5f5f5' }}>
+                            <TableCell sx={{ fontWeight: 600 }}>Account</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>Opening</TableCell>
+                            <TableCell align="right" sx={{ fontWeight: 600 }}>Closing</TableCell>
+                          </TableRow>
+                          {ledger.accountBalances.filter(acc => acc.accountId).map((acc, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell>{acc.accountName || 'Unknown'}</TableCell>
+                              <TableCell align="right">{formatINR(parseFloat(acc.openingBalance) || 0)}</TableCell>
+                              <TableCell align="right">
+                                {acc.closingBalance !== undefined ? formatINR(parseFloat(acc.closingBalance) || 0) : '—'}
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </Box>
+                  )}
                 </ListItem>
                 <Divider />
               </React.Fragment>
@@ -1231,6 +1240,51 @@ function LedgerManagement({ showHeader = false }) {
                   </Typography>
                 </Grid>
               </Grid>
+
+              {/* Account-wise Opening & Closing Balances */}
+              {selectedLedger.accountBalances && selectedLedger.accountBalances.filter(acc => acc.accountId).length > 0 && (
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="subtitle2" fontWeight="600" sx={{ mb: 1, fontSize: '0.95rem' }}>
+                    Account-wise Balances
+                  </Typography>
+                  <Table size="small" sx={{ border: '1px solid #e0e0e0' }}>
+                    <TableBody>
+                      <TableRow sx={{ bgcolor: '#f5f5f5' }}>
+                        <TableCell sx={{ fontWeight: 700, fontSize: '0.8rem' }}>Account</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.8rem' }}>Opening</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.8rem' }}>Closing</TableCell>
+                      </TableRow>
+                      {selectedLedger.accountBalances.filter(acc => acc.accountId).map((acc, idx) => (
+                        <TableRow key={idx}>
+                          <TableCell sx={{ fontSize: '0.8rem' }}>{acc.accountName || 'Unknown'}</TableCell>
+                          <TableCell align="right" sx={{ fontSize: '0.8rem' }}>{formatINR(parseFloat(acc.openingBalance) || 0)}</TableCell>
+                          <TableCell align="right" sx={{ fontSize: '0.8rem' }}>
+                            {acc.closingBalance !== undefined ? formatINR(parseFloat(acc.closingBalance) || 0) : '—'}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                      <TableRow sx={{ bgcolor: '#e3f2fd' }}>
+                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem' }}>Total</TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                          {formatINR(selectedLedger.accountBalances
+                            .filter(acc => acc.accountId)
+                            .reduce((sum, acc) => sum + (parseFloat(acc.openingBalance) || 0), 0)
+                          )}
+                        </TableCell>
+                        <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
+                          {selectedLedger.accountBalances.some(acc => acc.closingBalance !== undefined)
+                            ? formatINR(selectedLedger.accountBalances
+                                .filter(acc => acc.accountId)
+                                .reduce((sum, acc) => sum + (parseFloat(acc.closingBalance) || 0), 0)
+                              )
+                            : '—'
+                          }
+                        </TableCell>
+                      </TableRow>
+                    </TableBody>
+                  </Table>
+                </Box>
+              )}
 
               {selectedLedger.metrics && (
                 <Box>
