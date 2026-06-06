@@ -4,11 +4,7 @@ import {
   Typography,
   TextField,
   Button,
-  Paper,
-  Tabs,
-  Tab,
   Chip,
-  IconButton,
   Alert,
   CircularProgress,
   Snackbar,
@@ -21,15 +17,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Fab,
-  ToggleButtonGroup,
-  ToggleButton,
   Backdrop,
   useMediaQuery,
   Accordion,
@@ -43,8 +31,6 @@ import SendIcon from '@mui/icons-material/Send';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
-import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
 import { useAuth } from '../Auth/AuthContext';
@@ -55,6 +41,70 @@ import { PAYMENT_MODES } from '../../config/constants';
 import { convertToINR } from '../../utils/currencyUtils';
 import Footer from '../Common/Footer';
 import BookIcon from '@mui/icons-material/Book';
+
+// ── Expandable transaction row — must be a component (not inline) so useState is valid ──
+function TransactionRow({ t, idx, totalInGroup, onEdit, onDelete }) {
+  const [expanded, setExpanded] = React.useState(false);
+  const isExpense = t.type === 'expense';
+  const formatAmt = (amount, currency = 'INR') => {
+    if (!currency || currency === 'INR' || currency === 'rupees') return `₹${(parseFloat(amount) || 0).toFixed(2)}`;
+    return `${currency} ${(parseFloat(amount) || 0).toFixed(2)}`;
+  };
+  return (
+    <Box>
+      <Box
+        onClick={() => setExpanded(!expanded)}
+        sx={{
+          display: 'flex', alignItems: 'center', px: 2, py: '11px',
+          borderBottom: (expanded || idx < totalInGroup - 1) ? '1px solid #f5f5f5' : 'none',
+          cursor: 'pointer', '&:active': { bgcolor: '#f9fafb' }, transition: 'background 0.1s',
+          bgcolor: expanded ? '#fafafa' : '#fff'
+        }}
+      >
+        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: isExpense ? '#dc2626' : '#16a34a', flexShrink: 0, mr: 1.5 }} />
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography sx={{ fontSize: '0.85rem', fontWeight: 400, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {t.transactionDesc || t.description || 'N/A'}
+          </Typography>
+          {t.expenseHead && (
+            <Typography sx={{ fontSize: '0.62rem', color: '#9ca3af', mt: '1px' }}>{t.expenseHead}</Typography>
+          )}
+        </Box>
+        <Typography fontWeight="700" sx={{ fontSize: '0.9rem', ml: 1, color: isExpense ? '#dc2626' : '#16a34a', flexShrink: 0 }}>
+          {isExpense ? '−' : '+'}{formatAmt(t.amount, t.currency)}
+        </Typography>
+        <Typography sx={{ fontSize: '0.65rem', color: '#d1d5db', ml: '6px', transition: 'transform 0.15s', display: 'inline-block', transform: expanded ? 'rotate(180deg)' : 'none' }}>▼</Typography>
+      </Box>
+      {expanded && (
+        <Box sx={{ px: 2, py: 1.25, bgcolor: '#f9fafb', borderBottom: idx < totalInGroup - 1 ? '1px solid #f0f0f0' : 'none' }}>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: '6px', mb: 1.25 }}>
+            {t.paymentMode && (
+              <Typography sx={{ fontSize: '0.68rem', bgcolor: '#eff6ff', color: '#1d4ed8', px: '8px', py: '3px', borderRadius: '10px', fontWeight: 600 }}>{t.paymentMode}</Typography>
+            )}
+            {t.accountName && (
+              <Typography sx={{ fontSize: '0.68rem', bgcolor: '#f3f4f6', color: '#6b7280', px: '8px', py: '3px', borderRadius: '10px' }}>{t.accountName}</Typography>
+            )}
+            {t.currency && t.currency !== 'INR' && (
+              <Typography sx={{ fontSize: '0.68rem', bgcolor: '#fef3c7', color: '#92400e', px: '8px', py: '3px', borderRadius: '10px' }}>{t.currency}</Typography>
+            )}
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button size="small" startIcon={<EditIcon sx={{ fontSize: 13 }} />}
+              onClick={(e) => { e.stopPropagation(); onEdit(t); setExpanded(false); }}
+              sx={{ fontSize: '0.72rem', color: '#1d4ed8', textTransform: 'none', py: '4px', px: 1.25, bgcolor: '#eff6ff', borderRadius: '8px', '&:hover': { bgcolor: '#dbeafe' }, minWidth: 0 }}>
+              Edit
+            </Button>
+            <Button size="small" startIcon={<DeleteIcon sx={{ fontSize: 13 }} />}
+              onClick={(e) => { e.stopPropagation(); onDelete(t.id); }}
+              sx={{ fontSize: '0.72rem', color: '#dc2626', textTransform: 'none', py: '4px', px: 1.25, bgcolor: '#fff5f5', borderRadius: '8px', '&:hover': { bgcolor: '#fee2e2' }, minWidth: 0 }}>
+              Delete
+            </Button>
+          </Box>
+        </Box>
+      )}
+    </Box>
+  );
+}
 
 function TabPanel({ children, value, index }) {
   return (
@@ -69,7 +119,6 @@ function DailyExpenseLogPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [tabValue, setTabValue] = useState(0);
-  const [weekTabValue, setWeekTabValue] = useState(0);
   
   // Edit transaction states
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -88,8 +137,6 @@ function DailyExpenseLogPage() {
     accountId: '',
     accountName: ''
   });
-  const [autoDetecting, setAutoDetecting] = useState(false);
-  
   // Income transaction states
   const [incomeData, setIncomeData] = useState({
     date: new Date().toISOString().split('T')[0],
@@ -103,8 +150,6 @@ function DailyExpenseLogPage() {
     accountId: '',
     accountName: ''
   });
-  const [incomeAutoDetecting, setIncomeAutoDetecting] = useState(false);
-  
   // NLP transaction states (previously One-time)
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
@@ -129,8 +174,6 @@ function DailyExpenseLogPage() {
     accountId: '',
     accountName: ''
   });
-  const [recurringAutoDetecting, setRecurringAutoDetecting] = useState(false);
-  
   // Template expense states
   const [templateTransactions, setTemplateTransactions] = useState([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState('');
@@ -148,15 +191,12 @@ function DailyExpenseLogPage() {
     accountId: '',
     accountName: ''
   });
-  const [templateAutoDetecting, setTemplateAutoDetecting] = useState(false);
-  
   // Common states
   const [transactions, setTransactions] = useState([]);
   const [notification, setNotification] = useState({ open: false, message: '', severity: 'success' });
   
   // Ledger states
   const [currentLedger, setCurrentLedger] = useState(null);
-  const [openLedgers, setOpenLedgers] = useState([]);
   const [ledgerLoading, setLedgerLoading] = useState(true);
   
   // Expense Heads
@@ -166,17 +206,11 @@ function DailyExpenseLogPage() {
   const [bankAccounts, setBankAccounts] = useState([]);
   const [creditCards, setCreditCards] = useState([]);
 
-  // Compute the periodic-only options for recurring dropdown and log them for diagnosis
-  const periodicRecurringOptions = useMemo(() => {
-    const list = recurringTransactions.filter((transaction) => {
-      const recurrenceType = transaction.recurrenceType || 'periodic';
-      return recurrenceType === 'periodic';
-    });
-    console.log('Recurring dropdown options (periodic only):', list.map(r => ({ id: r.id, transactionName: r.transactionName, recurrenceType: r.recurrenceType })));
-    return list;
-  }, [recurringTransactions]);
-  
-  const paymentTypes = ['Bank Account', 'Cash', 'Credit'];
+  // SMS Import states
+  const [smsText, setSmsText] = useState('');
+  const [smsParsing, setSmsParsing] = useState(false);
+  const [smsRows, setSmsRows] = useState([]); // [{ raw, parsed, selected, saving, saved, error }]
+
   const currencies = ['INR', 'USD', 'EUR', 'AUD', 'GBP'];
   const incomeSources = ['Salary', 'Interest-Income', 'Dividend', 'Others'];
   const incomeCategories = ['Fixed', 'NonFixed'];
@@ -204,7 +238,6 @@ function DailyExpenseLogPage() {
           return dateB - dateA; // Descending order (newest first)
         });
         
-        setOpenLedgers(ledgers);
         // Set the first (most recent) as current
         setCurrentLedger(ledgers[0]);
       } else {
@@ -322,65 +355,6 @@ function DailyExpenseLogPage() {
     } catch (error) {
       console.error('Error fetching credit cards:', error);
       setCreditCards([]);
-    }
-  };
-
-  // Calculate week ranges based on ledger start date
-  const getWeekRanges = () => {
-    if (!currentLedger || !currentLedger.startDate) {
-      console.log('No current ledger or start date:', { currentLedger });
-      return [];
-    }
-
-    try {
-      const weeks = [];
-      const ledgerStart = new Date(currentLedger.startDate);
-      
-      // Validate the date
-      if (isNaN(ledgerStart.getTime())) {
-        console.error('Invalid ledger start date:', currentLedger.startDate);
-        return [];
-      }
-      
-      ledgerStart.setHours(0, 0, 0, 0);
-      
-      const today = new Date();
-      today.setHours(23, 59, 59, 999);
-      
-      const ledgerEnd = currentLedger.endDate ? new Date(currentLedger.endDate) : today;
-      ledgerEnd.setHours(23, 59, 59, 999);
-    
-    // Calculate the number of days from ledger start to today (or ledger end if closed)
-    const daysDiff = Math.floor((ledgerEnd - ledgerStart) / (1000 * 60 * 60 * 24));
-    const numberOfWeeks = Math.ceil((daysDiff + 1) / 7);
-    
-    // Generate weeks starting from ledger start date
-    for (let i = 0; i < numberOfWeeks; i++) {
-      const weekStart = new Date(ledgerStart);
-      weekStart.setDate(ledgerStart.getDate() + (i * 7));
-      weekStart.setHours(0, 0, 0, 0);
-      
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekStart.getDate() + 6);
-      weekEnd.setHours(23, 59, 59, 999);
-      
-      // Don't let week end exceed ledger end date
-      if (weekEnd > ledgerEnd) {
-        weekEnd.setTime(ledgerEnd.getTime());
-      }
-      
-      weeks.push({
-        start: weekStart,
-        end: weekEnd,
-        label: `Week ${i + 1}`
-      });
-    }
-    
-    console.log('Generated weeks:', weeks.length, weeks);
-    return weeks.reverse(); // Reverse to show most recent week first
-    } catch (error) {
-      console.error('Error in getWeekRanges:', error);
-      return [];
     }
   };
 
@@ -951,42 +925,6 @@ function DailyExpenseLogPage() {
     }
   };
 
-  const handleRecurringAutoDetectExpenseHead = async () => {
-    if (!recurringData.transactionDesc?.trim()) {
-      setNotification({
-        open: true,
-        message: 'Please enter a transaction description first',
-        severity: 'warning'
-      });
-      return;
-    }
-
-    setRecurringAutoDetecting(true);
-    try {
-      // Create a temporary description with a dummy amount for parsing
-      const tempDesc = `I spent 1 rupee on ${recurringData.transactionDesc}`;
-      const parsed = await parseTransactionWithGemini(tempDesc, currentUser.uid);
-      setRecurringData({
-        ...recurringData,
-        expenseHead: parsed.expenseHead || 'Other'
-      });
-      setNotification({
-        open: true,
-        message: 'Expense head detected successfully!',
-        severity: 'success'
-      });
-    } catch (error) {
-      console.error('Error auto-detecting expense head:', error);
-      setNotification({
-        open: true,
-        message: 'Error detecting expense head. Please enter manually.',
-        severity: 'error'
-      });
-    } finally {
-      setRecurringAutoDetecting(false);
-    }
-  };
-
   const handleSaveRecurringExpense = async () => {
     if (!currentLedger) {
       setNotification({
@@ -1229,43 +1167,6 @@ function DailyExpenseLogPage() {
     }
   };
 
-  const handleTemplateAutoDetectExpenseHead = async () => {
-    if (!templateData.transactionDesc) {
-      setNotification({
-        open: true,
-        message: 'Please enter a transaction description first',
-        severity: 'warning'
-      });
-      return;
-    }
-
-    setTemplateAutoDetecting(true);
-    try {
-      const result = await parseTransactionWithGemini(
-        `Determine expense head for: ${templateData.transactionDesc}`,
-        currentUser.uid
-      );
-      
-      if (result.expenseHead) {
-        setTemplateData(prev => ({ ...prev, expenseHead: result.expenseHead }));
-        setNotification({
-          open: true,
-          message: 'Expense head detected successfully!',
-          severity: 'success'
-        });
-      }
-    } catch (error) {
-      console.error('Error auto-detecting expense head:', error);
-      setNotification({
-        open: true,
-        message: 'Error detecting expense head. Please enter manually.',
-        severity: 'error'
-      });
-    } finally {
-      setTemplateAutoDetecting(false);
-    }
-  };
-
   const handleResetTemplateForm = () => {
     setSelectedTemplateId('');
     setTemplateData({
@@ -1452,42 +1353,6 @@ function DailyExpenseLogPage() {
     }
   };
 
-  const handleAutoDetectExpenseHead = async () => {
-    if (!manualData.transactionDesc?.trim()) {
-      setNotification({
-        open: true,
-        message: 'Please enter a transaction description first',
-        severity: 'warning'
-      });
-      return;
-    }
-
-    setAutoDetecting(true);
-    try {
-      // Create a temporary description with a dummy amount for parsing
-      const tempDesc = `I spent 1 rupee on ${manualData.transactionDesc}`;
-      const parsed = await parseTransactionWithGemini(tempDesc, currentUser.uid);
-      setManualData({
-        ...manualData,
-        expenseHead: parsed.expenseHead || 'Other'
-      });
-      setNotification({
-        open: true,
-        message: 'Expense head detected successfully!',
-        severity: 'success'
-      });
-    } catch (error) {
-      console.error('Error auto-detecting expense head:', error);
-      setNotification({
-        open: true,
-        message: 'Error detecting expense head. Please enter manually.',
-        severity: 'error'
-      });
-    } finally {
-      setAutoDetecting(false);
-    }
-  };
-
   const handleResetManualForm = () => {
     setManualData({
       date: new Date().toISOString().split('T')[0],
@@ -1671,49 +1536,6 @@ function DailyExpenseLogPage() {
       setIncomeData(newData);
     } else {
       setIncomeData({ ...incomeData, [field]: value });
-    }
-  };
-
-  const handleIncomeAutoDetectExpenseHead = async () => {
-    if (!incomeData.transactionDesc?.trim()) {
-      setNotification({
-        open: true,
-        message: 'Please enter a transaction description first',
-        severity: 'warning'
-      });
-      return;
-    }
-
-    setIncomeAutoDetecting(true);
-    try {
-      const tempDesc = `I received 1 rupee from ${incomeData.transactionDesc}`;
-      const parsed = await parseTransactionWithGemini(tempDesc, currentUser.uid);
-      // For income, map to income sources
-      let detectedSource = 'Others';
-      if (parsed.expenseHead) {
-        const lowerHead = parsed.expenseHead.toLowerCase();
-        if (lowerHead.includes('salary')) detectedSource = 'Salary';
-        else if (lowerHead.includes('interest')) detectedSource = 'Interest-Income';
-        else if (lowerHead.includes('dividend')) detectedSource = 'Dividend';
-      }
-      setIncomeData({
-        ...incomeData,
-        expenseHead: detectedSource
-      });
-      setNotification({
-        open: true,
-        message: 'Income source detected successfully!',
-        severity: 'success'
-      });
-    } catch (error) {
-      console.error('Error auto-detecting income source:', error);
-      setNotification({
-        open: true,
-        message: 'Error detecting income source. Please select manually.',
-        severity: 'error'
-      });
-    } finally {
-      setIncomeAutoDetecting(false);
     }
   };
 
@@ -1996,6 +1818,170 @@ function DailyExpenseLogPage() {
     }
   };
 
+  // ── SMS PARSE ──────────────────────────────────────────────────
+  const splitSmsMessages = (text) => {
+    const chunks = text.split(/\n{2,}/).map(c => c.trim()).filter(c => c.length > 10);
+    return chunks;
+  };
+
+  // Match raw SMS text against the user's accounts to infer account + payment mode
+  const inferAccountFromSms = (raw) => {
+    const lowerRaw = raw.toLowerCase();
+
+    // Helper: extract significant words from a string (3+ chars, strip common noise words)
+    const sigWords = (str) =>
+      (str || '').toLowerCase()
+        .replace(/credit\s*card|debit\s*card|cc|dc|bank|account|savings|current|card/gi, ' ')
+        .split(/[\s\-_,./|&]+/)
+        .filter(w => w.length > 2);
+
+    // 1. Credit cards — match by last 4 digits of cardNumber, OR by words in nickName
+    for (const card of creditCards) {
+      // Last-4 match: strip all non-digits first, then take last 4
+      const last4 = (card.cardNumber || '').replace(/\D/g, '').slice(-4);
+      if (last4 && lowerRaw.includes(last4)) {
+        return { accountId: card.id, accountName: card.nickName || card.accountNickName || '', paymentMode: 'Credit Card' };
+      }
+      // Nickname word match (e.g. "ICICI CC" → word "icici" found in SMS)
+      const words = sigWords(card.nickName || card.accountNickName);
+      if (words.length > 0 && words.some(w => lowerRaw.includes(w))) {
+        return { accountId: card.id, accountName: card.nickName || card.accountNickName || '', paymentMode: 'Credit Card' };
+      }
+    }
+
+    // 2. Bank accounts — match by bankName field OR by words in accountNickName
+    for (const bank of bankAccounts) {
+      // bankName field match (e.g. "Axis Bank" → word "axis" found in SMS)
+      const bankNameWords = sigWords(bank.bankName);
+      if (bankNameWords.length > 0 && bankNameWords.some(w => lowerRaw.includes(w))) {
+        return { accountId: bank.id, accountName: bank.accountNickName || '', paymentMode: 'UPI' };
+      }
+      // Nickname word match fallback
+      const nickWords = sigWords(bank.accountNickName);
+      if (nickWords.length > 0 && nickWords.some(w => lowerRaw.includes(w))) {
+        return { accountId: bank.id, accountName: bank.accountNickName || '', paymentMode: 'UPI' };
+      }
+    }
+
+    // 3. Fallback to first bank account
+    const defaultBank = bankAccounts[0] || null;
+    return { accountId: defaultBank?.id || '', accountName: defaultBank?.accountNickName || '', paymentMode: 'UPI' };
+  };
+
+  // Detect transaction type from SMS keywords
+  const inferTypeFromSms = (raw) => {
+    const lower = raw.toLowerCase();
+    if (/credited|received|credit/i.test(lower)) return 'income';
+    if (/debited|debit|spent|payment|purchase/i.test(lower)) return 'expense';
+    return 'expense';
+  };
+
+  // Detect currency from SMS text — checks symbols, codes and words
+  const inferCurrencyFromSms = (raw) => {
+    // Order matters: check more specific patterns first
+    if (/\bINR\b|Rs\.?\s*\d|Rupees?\b|₹/i.test(raw)) return 'INR';
+    if (/\bUSD\b|\$\s*\d|US\s*Dollar/i.test(raw)) return 'USD';
+    if (/\bEUR\b|€\s*\d|Euro/i.test(raw)) return 'EUR';
+    if (/\bGBP\b|£\s*\d|Pound/i.test(raw)) return 'GBP';
+    if (/\bAUD\b|A\$\s*\d|Australian\s*Dollar/i.test(raw)) return 'AUD';
+    return 'INR'; // default for Indian bank SMS
+  };
+
+  const handleParseSms = async () => {
+    const chunks = splitSmsMessages(smsText);
+    if (!chunks.length) return;
+    setSmsParsing(true);
+    const today = new Date().toISOString().split('T')[0];
+    const results = [];
+    for (const raw of chunks) {
+      try {
+        const parsed = await parseTransactionWithGemini(raw, currentUser.uid);
+        const { accountId, accountName, paymentMode } = inferAccountFromSms(raw);
+        const type = inferTypeFromSms(raw);
+        const currency = inferCurrencyFromSms(raw);
+        results.push({
+          raw,
+          selected: true,
+          saving: false,
+          saved: false,
+          error: null,
+          parsed: {
+            date: parsed.date || today,
+            transactionDesc: parsed.transactionDesc || parsed.description || '',
+            amount: parsed.amount || '',
+            currency,
+            expenseHead: parsed.expenseHead || '',
+            paymentMode,
+            category: 'Sundry',
+            type,
+            accountId,
+            accountName,
+          }
+        });
+      } catch (err) {
+        results.push({ raw, selected: false, saving: false, saved: false, error: err?.message || 'Parse failed', parsed: null });
+      }
+    }
+    setSmsRows(results);
+    setSmsParsing(false);
+  };
+
+  const handleSmsRowFieldChange = (idx, field, value) => {
+    setSmsRows(prev => prev.map((r, i) => i === idx ? { ...r, parsed: { ...r.parsed, [field]: value } } : r));
+  };
+
+  const handleSmsRowToggle = (idx) => {
+    setSmsRows(prev => prev.map((r, i) => i === idx ? { ...r, selected: !r.selected } : r));
+  };
+
+  const handleSubmitSmsRows = async () => {
+    if (!currentLedger) {
+      setNotification({ open: true, message: 'No open ledger. Please start a ledger first.', severity: 'error' }); return;
+    }
+    const selectedRows = smsRows.filter(r => r.selected && !r.saved && r.parsed);
+    if (!selectedRows.length) {
+      setNotification({ open: true, message: 'No rows selected.', severity: 'warning' }); return;
+    }
+    setSmsRows(prev => prev.map(r => r.selected && !r.saved ? { ...r, saving: true } : r));
+    let saved = 0;
+    for (let i = 0; i < smsRows.length; i++) {
+      const row = smsRows[i];
+      if (!row.selected || row.saved || !row.parsed) continue;
+      try {
+        const p = row.parsed;
+        const txDate = new Date(p.date);
+        txDate.setHours(12, 0, 0, 0);
+        const amountINR = p.currency === 'INR' ? parseFloat(p.amount) : await convertToINR(parseFloat(p.amount), p.currency);
+        await addDoc(collection(db, 'transactions'), {
+          userId: currentUser.uid,
+          ledgerId: currentLedger.id,
+          date: Timestamp.fromDate(txDate),
+          transactionDesc: p.transactionDesc,
+          amount: parseFloat(p.amount) || 0,
+          amountInINR: amountINR,
+          currency: p.currency,
+          paymentMode: p.paymentMode,
+          category: p.category,
+          type: p.type || 'expense',
+          expenseHead: p.expenseHead,
+          accountId: p.accountId,
+          accountName: p.accountName,
+          createdAt: Timestamp.now(),
+          source: 'sms_import',
+        });
+        setSmsRows(prev => prev.map((r, idx) => idx === i ? { ...r, saving: false, saved: true } : r));
+        saved++;
+      } catch (err) {
+        setSmsRows(prev => prev.map((r, idx) => idx === i ? { ...r, saving: false, error: 'Save failed' } : r));
+      }
+    }
+    if (saved > 0) {
+      setNotification({ open: true, message: `${saved} transaction${saved > 1 ? 's' : ''} saved!`, severity: 'success' });
+      fetchTransactions();
+      fetchOpenLedger();
+    }
+  };
+
   const formatCurrency = (amount, currency = 'INR') => {
     if (currency === 'INR' || currency === 'rupees') {
       return `₹${amount.toFixed(2)}`;
@@ -2138,70 +2124,37 @@ function DailyExpenseLogPage() {
         {/* ── Mode Selector ── */}
         {(() => {
           const modes = [
-            { value: 0, label: 'Smart', sublabel: 'NLP', icon: '✨', color: '#5e35b1', bg: '#ede7f6', border: '#d1c4e9' },
-            { value: 1, label: 'Template', sublabel: 'TMPL', icon: '📋', color: '#1565c0', bg: '#e3f2fd', border: '#bbdefb' },
-            { value: 2, label: 'Manual', sublabel: 'MNL', icon: '✏️', color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
-            { value: 3, label: 'Recurring', sublabel: 'RCNG', icon: '🔁', color: '#0f766e', bg: '#f0fdfa', border: '#99f6e4' },
-            { value: 4, label: 'Income', sublabel: 'INCM', icon: '💰', color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+            { value: 0, label: 'Smart',     icon: '✨', color: '#5e35b1' },
+            { value: 1, label: 'Template',  icon: '📋', color: '#1565c0' },
+            { value: 2, label: 'Manual',    icon: '✏️', color: '#b45309' },
+            { value: 3, label: 'Recurring', icon: '🔁', color: '#0f766e' },
+            { value: 4, label: 'Income',    icon: '💰', color: '#15803d' },
+            { value: 5, label: 'SMS',       icon: '📩', color: '#b91c1c' },
           ];
           return (
-            <Box sx={{ mb: 2 }}>
-              {/* Mode label */}
-              <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9ca3af', letterSpacing: '0.5px', textTransform: 'uppercase', mb: 1 }}>
-                Entry Mode
-              </Typography>
-              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
-                {modes.map(m => {
-                  const selected = tabValue === m.value;
-                  return (
-                    <Box
-                      key={m.value}
-                      onClick={() => { setTabValue(m.value); handleClearParsedData(); }}
-                      sx={{
-                        display: 'flex', flexDirection: 'column', alignItems: 'center',
-                        py: '10px', px: '4px', borderRadius: '12px', cursor: 'pointer',
-                        border: `2px solid ${selected ? m.color : m.border}`,
-                        bgcolor: selected ? m.color : m.bg,
-                        transition: 'all 0.15s ease',
-                        boxShadow: selected ? `0 2px 8px ${m.color}40` : 'none',
-                        '&:active': { transform: 'scale(0.96)' }
-                      }}
-                    >
-                      <Typography sx={{ fontSize: '1.1rem', lineHeight: 1, mb: '4px' }}>{m.icon}</Typography>
-                      <Typography sx={{
-                        fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.3px',
-                        color: selected ? '#fff' : m.color, lineHeight: 1.2, textAlign: 'center'
-                      }}>
-                        {m.sublabel}
-                      </Typography>
-                    </Box>
-                  );
-                })}
-              </Box>
-              {/* Active mode banner */}
-              {(() => {
-                const active = modes.find(m => m.value === tabValue);
-                const descriptions = {
-                  0: 'Describe your expense in plain English — AI will parse it',
-                  1: 'Pick from your saved transaction templates',
-                  2: 'Fill in all fields manually',
-                  3: 'Log a scheduled recurring expense',
-                  4: 'Record salary, freelance, or other income',
-                };
+            <Box sx={{ mb: 1.5, display: 'flex', borderRadius: '10px', overflow: 'hidden', border: '1.5px solid #e5e7eb' }}>
+              {modes.map((m, i) => {
+                const selected = tabValue === m.value;
                 return (
-                  <Box sx={{
-                    mt: 1.5, px: 1.5, py: 1, borderRadius: '10px',
-                    bgcolor: active.bg, border: `1px solid ${active.border}`,
-                    display: 'flex', alignItems: 'center', gap: 1
-                  }}>
-                    <Typography sx={{ fontSize: '0.88rem' }}>{active.icon}</Typography>
-                    <Box>
-                      <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: active.color }}>{active.label}</Typography>
-                      <Typography sx={{ fontSize: '0.68rem', color: '#6b7280', lineHeight: 1.3 }}>{descriptions[tabValue]}</Typography>
-                    </Box>
+                  <Box
+                    key={m.value}
+                    onClick={() => { setTabValue(m.value); handleClearParsedData(); }}
+                    sx={{
+                      flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center',
+                      py: '8px', px: '2px', cursor: 'pointer',
+                      borderRight: i < modes.length - 1 ? '1.5px solid #e5e7eb' : 'none',
+                      bgcolor: selected ? m.color : '#fff',
+                      transition: 'background 0.15s ease',
+                      '&:active': { filter: 'brightness(0.94)' }
+                    }}
+                  >
+                    <Typography sx={{ fontSize: '0.95rem', lineHeight: 1, mb: '3px' }}>{m.icon}</Typography>
+                    <Typography sx={{ fontSize: '0.52rem', fontWeight: selected ? 700 : 500, color: selected ? '#fff' : '#6b7280', lineHeight: 1.2, textAlign: 'center' }}>
+                      {m.label}
+                    </Typography>
                   </Box>
                 );
-              })()}
+              })}
             </Box>
           );
         })()}
@@ -3591,187 +3544,286 @@ function DailyExpenseLogPage() {
           </Box>
         </TabPanel>
 
-      {/* Transaction History - Week-wise Tabs */}
-      <Box sx={{ bgcolor: '#f0f0f0', px: 2, py: 1.5, borderRadius: 1, mb: 2 }}>
-        <Typography variant="h6" fontWeight="600" sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
-          Transactions Log
-        </Typography>
-      </Box>
-      
-      {transactions.length === 0 ? (
-        <Paper elevation={0} sx={{ p: 4, textAlign: 'center', borderRadius: 2, border: '1px solid #e0e0e0' }}>
-          <Typography variant="body2" color="text.secondary">
-            No transactions yet. Add your first transaction above!
-          </Typography>
-        </Paper>
-      ) : (
-        <Paper elevation={2} sx={{ borderRadius: 2 }}>
-          <Tabs
-            value={weekTabValue}
-            onChange={(e, newValue) => setWeekTabValue(newValue)}
-            variant="fullWidth"
-            sx={{
-              borderBottom: 1,
-              borderColor: 'divider',
-              '& .MuiTab-root': {
-                minHeight: { xs: 48, sm: 56 },
-                fontSize: { xs: '0.75rem', sm: '0.875rem' },
-                fontWeight: 600
-              }
-            }}
-          >
-            {getWeekRanges().map((week, index) => {
-              const weekTransactions = transactions.filter(t => {
-                const txDate = new Date(t.date);
-                txDate.setHours(0, 0, 0, 0);
-                return txDate >= week.start && txDate <= week.end;
-              });
-              return (
-                <Tab
-                  key={index}
-                  label={
-                    <Box>
-                      <Typography variant="caption" fontWeight="600" display="block">
-                        {week.label}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                        {weekTransactions.length} txns
-                      </Typography>
-                    </Box>
-                  }
+        {/* ── SMS IMPORT TAB ── */}
+        <TabPanel value={tabValue} index={5}>
+          <Box sx={{ p: 2, pt: 1 }}>
+            {/* Step 1 — Paste area */}
+            {smsRows.length === 0 && (
+              <Box>
+                <Typography sx={{ fontSize: '0.72rem', color: '#6b7280', mb: 1, lineHeight: 1.5 }}>
+                  Copy your bank SMS messages and paste them below. Separate multiple messages with a blank line.
+                </Typography>
+                <TextField
+                  fullWidth multiline minRows={5} maxRows={12}
+                  placeholder={"INR 350.00 debited\nA/c no. XX5118\n31-05-26, 16:31:57\nUPI/P2M/651708045993/Purohit Jitendra\nAxis Bank\n\nINR 150.00 debited\nA/c no. XX5118\n01-06-26, 09:26:58\nUPI/P2M/615270115293/MUNAJIR\nAxis Bank"}
+                  value={smsText}
+                  onChange={e => setSmsText(e.target.value)}
+                  sx={{ '& .MuiOutlinedInput-root': { borderRadius: '10px', fontSize: '0.78rem', bgcolor: '#fafafa' } }}
                 />
-              );
-            })}
-          </Tabs>
-          
-          {getWeekRanges().map((week, weekIndex) => {
-            const weekTransactions = transactions.filter(t => {
-              const txDate = new Date(t.date);
-              txDate.setHours(0, 0, 0, 0);
-              return txDate >= week.start && txDate <= week.end;
-            });
-            
-            return (
-              <TabPanel key={weekIndex} value={weekTabValue} index={weekIndex}>
-                {weekTransactions.length === 0 ? (
-                  <Box sx={{ p: 3, textAlign: 'center' }}>
-                    <Typography variant="body2" color="text.secondary">
-                      No transactions for {week.label.toLowerCase()}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-                      {week.start.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} - {week.end.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </Typography>
+                <Button
+                  fullWidth variant="contained" disabled={!smsText.trim() || smsParsing}
+                  onClick={handleParseSms}
+                  startIcon={smsParsing ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : null}
+                  sx={{
+                    mt: 1.5,
+                    background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
+                    color: '#ffffff !important',
+                    py: 1.5, borderRadius: 2, textTransform: 'none', fontSize: '1rem', fontWeight: 600,
+                    '&:hover': { background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important' },
+                    '&.Mui-disabled': { background: '#bdbdbd !important', color: '#fff !important' }
+                  }}
+                >
+                  {smsParsing ? 'Parsing…' : '📩 Parse SMS'}
+                </Button>
+              </Box>
+            )}
+
+            {/* Step 2 — Review table */}
+            {smsRows.length > 0 && (
+              <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                  <Typography sx={{ fontSize: '0.78rem', fontWeight: 700, color: '#111827' }}>
+                    {smsRows.length} message{smsRows.length > 1 ? 's' : ''} parsed — review &amp; select
+                  </Typography>
+                  <Button size="small" onClick={() => { setSmsRows([]); setSmsText(''); }}
+                    sx={{ fontSize: '0.68rem', color: '#6b7280', textTransform: 'none' }}>
+                    ← Back
+                  </Button>
+                </Box>
+
+                {smsRows.map((row, idx) => (
+                  <Box key={idx} sx={{
+                    mb: 1.5, border: `2px solid ${row.saved ? '#bbf7d0' : row.error ? '#fecaca' : row.selected ? '#b91c1c' : '#e5e7eb'}`,
+                    borderRadius: '12px', overflow: 'hidden', opacity: row.saved ? 0.7 : 1,
+                    bgcolor: row.saved ? '#f0fdf4' : row.error ? '#fef2f2' : '#fff'
+                  }}>
+                    {/* Row header — raw SMS + checkbox */}
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', px: 1.5, py: 1, bgcolor: '#f9fafb', borderBottom: '1px solid #f0f0f0', gap: 1 }}>
+                      <Box
+                        onClick={() => !row.saved && handleSmsRowToggle(idx)}
+                        sx={{
+                          width: 18, height: 18, borderRadius: '4px', flexShrink: 0, mt: '1px', cursor: 'pointer',
+                          border: `2px solid ${row.selected ? '#b91c1c' : '#d1d5db'}`,
+                          bgcolor: row.selected ? '#b91c1c' : '#fff',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}
+                      >
+                        {row.selected && <Typography sx={{ color: '#fff', fontSize: '0.6rem', lineHeight: 1, fontWeight: 900 }}>✓</Typography>}
+                      </Box>
+                      <Typography sx={{ fontSize: '0.65rem', color: '#6b7280', lineHeight: 1.5, flex: 1, whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {row.raw}
+                      </Typography>
+                      {row.saved && <Typography sx={{ fontSize: '0.65rem', color: '#16a34a', fontWeight: 700, flexShrink: 0 }}>✓ Saved</Typography>}
+                      {row.error && <Typography sx={{ fontSize: '0.65rem', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>{row.error}</Typography>}
+                    </Box>
+
+                    {/* Parsed fields — editable */}
+                    {row.parsed && !row.saved && (
+                      <Box sx={{ px: 2, py: 2 }}>
+                        <Grid container spacing={2}>
+                          <Grid item xs={6}>
+                            <TextField fullWidth size="small" label="Date" type="date"
+                              value={row.parsed.date}
+                              onChange={e => handleSmsRowFieldChange(idx, 'date', e.target.value)}
+                              InputLabelProps={{ shrink: true }}
+                            />
+                          </Grid>
+                          <Grid item xs={6}>
+                            <TextField fullWidth size="small" label="Amount" type="number"
+                              value={row.parsed.amount}
+                              onChange={e => handleSmsRowFieldChange(idx, 'amount', e.target.value)}
+                            />
+                          </Grid>
+                          <Grid item xs={12}>
+                            <TextField fullWidth size="small" label="Description"
+                              value={row.parsed.transactionDesc}
+                              onChange={e => handleSmsRowFieldChange(idx, 'transactionDesc', e.target.value)}
+                            />
+                          </Grid>
+                          <Grid item xs={6}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel>Expense Head</InputLabel>
+                              <Select value={row.parsed.expenseHead}
+                                onChange={e => handleSmsRowFieldChange(idx, 'expenseHead', e.target.value)}
+                                label="Expense Head">
+                                {expenseHeads.map(h => <MenuItem key={h.id || h} value={h.name || h}>{h.name || h}</MenuItem>)}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel>Account</InputLabel>
+                              <Select value={row.parsed.accountId}
+                                onChange={e => {
+                                  const isCreditCard = creditCards.some(c => c.id === e.target.value);
+                                  const acct = [...bankAccounts, ...creditCards].find(a => a.id === e.target.value);
+                                  handleSmsRowFieldChange(idx, 'accountId', e.target.value);
+                                  handleSmsRowFieldChange(idx, 'accountName', acct?.accountNickName || acct?.nickName || '');
+                                  handleSmsRowFieldChange(idx, 'paymentMode', isCreditCard ? 'Credit Card' : 'UPI');
+                                }}
+                                label="Account">
+                                <MenuItem value=""><em>None</em></MenuItem>
+                                {getAvailableAccounts('Credit Card').map(card => (
+                                  <MenuItem key={card.id} value={card.id}>💳 {card.accountNickName || card.nickName}</MenuItem>
+                                ))}
+                                {getAvailableAccounts('UPI').map(bank => (
+                                  <MenuItem key={bank.id} value={bank.id}>🏦 {bank.accountNickName || bank.nickName}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel>Payment Mode</InputLabel>
+                              <Select value={row.parsed.paymentMode}
+                                onChange={e => handleSmsRowFieldChange(idx, 'paymentMode', e.target.value)}
+                                label="Payment Mode">
+                                {PAYMENT_MODES.map(m => <MenuItem key={m} value={m}>{m}</MenuItem>)}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel>Currency</InputLabel>
+                              <Select value={row.parsed.currency}
+                                onChange={e => handleSmsRowFieldChange(idx, 'currency', e.target.value)}
+                                label="Currency">
+                                {currencies.map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel>Type</InputLabel>
+                              <Select value={row.parsed.type}
+                                onChange={e => handleSmsRowFieldChange(idx, 'type', e.target.value)}
+                                label="Type">
+                                <MenuItem value="expense">Expense</MenuItem>
+                                <MenuItem value="income">Income</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel>Category</InputLabel>
+                              <Select value={row.parsed.category}
+                                onChange={e => handleSmsRowFieldChange(idx, 'category', e.target.value)}
+                                label="Category">
+                                <MenuItem value="Sundry">Sundry</MenuItem>
+                                <MenuItem value="Recurring">Recurring</MenuItem>
+                                <MenuItem value="Fixed">Fixed</MenuItem>
+                                <MenuItem value="NonFixed">NonFixed</MenuItem>
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                        </Grid>
+                      </Box>
+                    )}
                   </Box>
-                ) : (
-                  <Box sx={{ p: { xs: 1, sm: 2 } }}>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5, px: 0.5 }}>
-                      {week.start.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })} - {week.end.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
-                    </Typography>
-                    <TableContainer>
-                      <Table size="small">
-                        <TableHead>
-                          <TableRow sx={{ bgcolor: '#f5f5f5' }}>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Date</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Amount</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Description</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Bank Account</TableCell>
-                            <TableCell sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Payment</TableCell>
-                            <TableCell align="center" sx={{ fontWeight: 700, fontSize: '0.75rem', py: 1 }}>Actions</TableCell>
-                          </TableRow>
-                        </TableHead>
-                        <TableBody>
-                          {weekTransactions.map((transaction) => (
-                            <TableRow 
-                              key={transaction.id}
-                              sx={{ 
-                                '&:hover': { bgcolor: '#f9f9f9' },
-                                borderLeft: `3px solid ${transaction.type === 'income' ? '#4caf50' : '#f44336'}`
-                              }}
-                            >
-                              <TableCell sx={{ fontSize: '0.75rem', py: 1, whiteSpace: 'nowrap' }}>
-                                {transaction.date?.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}
-                              </TableCell>
-                              <TableCell align="right" sx={{ fontSize: '0.75rem', py: 1, fontWeight: 600 }}>
-                                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 0.5 }}>
-                                  {transaction.type === 'income' ? (
-                                    <TrendingUpIcon sx={{ color: '#4caf50', fontSize: 16 }} />
-                                  ) : (
-                                    <TrendingDownIcon sx={{ color: '#f44336', fontSize: 16 }} />
-                                  )}
-                                  <Typography 
-                                    variant="body2" 
-                                    sx={{ 
-                                      color: transaction.type === 'income' ? '#4caf50' : '#f44336',
-                                      fontWeight: 600,
-                                      fontSize: '0.75rem'
-                                    }}
-                                  >
-                                    {formatCurrency(transaction.amount, transaction.currency)}
-                                  </Typography>
-                                </Box>
-                              </TableCell>
-                              <TableCell sx={{ fontSize: '0.75rem', py: 1, maxWidth: 200 }}>
-                                <Box>
-                                  <Typography variant="body2" sx={{ fontSize: '0.75rem', fontWeight: 500 }}>
-                                    {transaction.transactionDesc || transaction.description}
-                                  </Typography>
-                                  {transaction.expenseHead && (
-                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem' }}>
-                                      {transaction.expenseHead}
-                                    </Typography>
-                                  )}
-                                </Box>
-                              </TableCell>
-                              <TableCell sx={{ fontSize: '0.75rem', py: 1 }}>
-                                {transaction.accountName ? (
-                                  <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                                    {transaction.accountName}
-                                  </Typography>
-                                ) : (
-                                  <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.65rem', fontStyle: 'italic' }}>
-                                    {transaction.paymentMode === 'Cash' ? 'Cash' : 'N/A'}
-                                  </Typography>
-                                )}
-                              </TableCell>
-                              <TableCell sx={{ fontSize: '0.75rem', py: 1 }}>
-                                <Chip 
-                                  label={transaction.paymentMode} 
-                                  size="small" 
-                                  variant="outlined" 
-                                  sx={{ fontSize: '0.65rem', height: '20px' }} 
-                                />
-                              </TableCell>
-                              <TableCell align="center" sx={{ py: 1 }}>
-                                <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'center' }}>
-                                  <IconButton 
-                                    size="small" 
-                                    onClick={() => handleEditTransaction(transaction)}
-                                    sx={{ color: 'primary.main', padding: '4px' }}
-                                  >
-                                    <EditIcon sx={{ fontSize: 16 }} />
-                                  </IconButton>
-                                  <IconButton 
-                                    size="small" 
-                                    onClick={() => handleDeleteTransaction(transaction.id)}
-                                    sx={{ color: '#f44336', padding: '4px' }}
-                                  >
-                                    <DeleteIcon sx={{ fontSize: 16 }} />
-                                  </IconButton>
-                                </Box>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </TableContainer>
+                ))}
+
+                {/* Submit bar */}
+                {smsRows.some(r => !r.saved) && (
+                  <Box sx={{ position: 'sticky', bottom: 0, bgcolor: '#fff', pt: 1, pb: 0.5 }}>
+                    <Button fullWidth variant="contained"
+                      disabled={!smsRows.some(r => r.selected && !r.saved && r.parsed) || smsRows.some(r => r.saving)}
+                      onClick={handleSubmitSmsRows}
+                      startIcon={smsRows.some(r => r.saving) ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : null}
+                      sx={{
+                        background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
+                        color: '#ffffff !important',
+                        py: 1.5, borderRadius: 2, textTransform: 'none', fontSize: '1rem', fontWeight: 600,
+                        '&:hover': { background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important' },
+                        '&.Mui-disabled': { background: '#bdbdbd !important', color: '#fff !important' }
+                      }}
+                    >
+                      {smsRows.some(r => r.saving)
+                        ? 'Saving…'
+                        : `Save ${smsRows.filter(r => r.selected && !r.saved && r.parsed).length} Transaction${smsRows.filter(r => r.selected && !r.saved).length !== 1 ? 's' : ''}`
+                      }
+                    </Button>
                   </Box>
                 )}
-              </TabPanel>
-            );
-          })}
-        </Paper>
-      )}
+              </Box>
+            )}
+          </Box>
+        </TabPanel>
 
+      {/* Transaction History - Date Grouped Feed */}
+      {(() => {
+        if (transactions.length === 0) {
+          return (
+            <Box sx={{ textAlign: 'center', py: 5, bgcolor: '#fff', borderRadius: '14px', border: '1px solid #e8ecf0' }}>
+              <ReceiptLongIcon sx={{ fontSize: 44, color: '#d1d5db', mb: 1 }} />
+              <Typography sx={{ fontSize: '0.9rem', fontWeight: 600, color: '#374151' }}>No transactions yet</Typography>
+              <Typography sx={{ fontSize: '0.78rem', color: '#9ca3af', mt: '4px' }}>Add your first transaction above</Typography>
+            </Box>
+          );
+        }
+
+        // Group transactions by date label
+        const today = new Date(); today.setHours(0,0,0,0);
+        const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+
+        const getDateLabel = (date) => {
+          const d = new Date(date); d.setHours(0,0,0,0);
+          if (d.getTime() === today.getTime()) return 'Today';
+          if (d.getTime() === yesterday.getTime()) return 'Yesterday';
+          return d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
+        };
+
+        const groups = {};
+        transactions.forEach(t => {
+          const lbl = getDateLabel(t.date);
+          if (!groups[lbl]) groups[lbl] = [];
+          groups[lbl].push(t);
+        });
+
+        return (
+          <Box>
+            {/* Header */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+              <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Transactions
+              </Typography>
+              <Typography sx={{ fontSize: '0.68rem', color: '#9ca3af' }}>{transactions.length} total</Typography>
+            </Box>
+
+            {Object.entries(groups).map(([dateLabel, dayTxns]) => {
+              const dayExpenses = dayTxns.filter(t => t.type === 'expense').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+              const dayIncome = dayTxns.filter(t => t.type === 'income').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+
+              return (
+                <Box key={dateLabel} sx={{ mb: 1.5 }}>
+                  {/* Date group header */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: '2px', mb: '6px' }}>
+                    <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#6b7280' }}>{dateLabel}</Typography>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      {dayExpenses > 0 && (
+                        <Typography sx={{ fontSize: '0.68rem', color: '#dc2626', fontWeight: 600 }}>
+                          −{formatCurrency(dayExpenses, 'INR')}
+                        </Typography>
+                      )}
+                      {dayIncome > 0 && (
+                        <Typography sx={{ fontSize: '0.68rem', color: '#16a34a', fontWeight: 600 }}>
+                          +{formatCurrency(dayIncome, 'INR')}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+
+                  {/* Transaction rows */}
+                  <Box sx={{ bgcolor: '#fff', borderRadius: '14px', border: '1px solid #e8ecf0', overflow: 'hidden' }}>
+                    {dayTxns.map((t, idx) => (
+                      <TransactionRow key={t.id} t={t} idx={idx} totalInGroup={dayTxns.length} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} />
+                    ))}
+                  </Box>
+                </Box>
+              );
+            })}
+          </Box>
+        );
+      })()}
       {/* Edit Transaction Dialog */}
       <Dialog 
         open={editDialogOpen} 
