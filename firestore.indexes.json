@@ -58,6 +58,22 @@
         { "fieldPath": "recurrenceType", "order": "ASCENDING" },
         { "fieldPath": "transactionName", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "risk_profiles",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "expense_heads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "userId", "order": "ASCENDING" },
+        { "fieldPath": "name", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

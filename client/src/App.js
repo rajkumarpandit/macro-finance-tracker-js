@@ -32,12 +32,13 @@ import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
 import SupervisorAccountIcon from '@mui/icons-material/SupervisorAccount';
-import CategoryIcon from '@mui/icons-material/Category';
 import MenuIcon from '@mui/icons-material/Menu';
 import BookIcon from '@mui/icons-material/Book';
 import RepeatIcon from '@mui/icons-material/Repeat';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import FolderSharedIcon from '@mui/icons-material/FolderShared';
+import AssessmentIcon from '@mui/icons-material/Assessment';
+import StorageIcon from '@mui/icons-material/Storage';
 
 // Import authentication components
 import { AuthProvider, useAuth } from './components/Auth/AuthContext';
@@ -61,9 +62,10 @@ const MaintenancePage = lazy(() => import('./components/Maintenance/MaintenanceP
 const DailyExpenseLogPage = lazy(() => import('./components/DailyExpenseLog/DailyExpenseLogPage'));
 const LedgerPage = lazy(() => import('./components/Ledger/LedgerPage'));
 const RecurringTransactionSetup = lazy(() => import('./components/RecurringTransactions/RecurringTransactionSetup'));
-const ExpenseHeadManagement = lazy(() => import('./components/ExpenseHead/ExpenseHeadManagement'));
 const CurrencyManager = lazy(() => import('./components/Currency/CurrencyManager'));
 const MasterRecords = lazy(() => import('./components/MasterRecords/MasterRecords'));
+const RiskProfile = lazy(() => import('./components/Profile/RiskProfile'));
+const MutualFundDataManager = lazy(() => import('./components/Admin/MutualFundDataManager'));
 
 // TODO: Create these finance-specific components
 // const ExpensesPage = lazy(() => import('./components/Expenses/ExpensesPage'));
@@ -237,11 +239,7 @@ function NavigationBar() {
       '/expenses': 1,
       '/reports': 2,
       '/ledger': 3,
-      '/recurring-transactions': 4,
-      '/currency-manager': 5,
-      '/expense-heads': 6,
-      '/master-records': 7,
-      '/admin': 8,
+      '/admin': 4,
     };
     setValue(pathToIndex[location.pathname] ?? -1);
   }, [location]);
@@ -272,7 +270,7 @@ function NavigationBar() {
           bgcolor: '#ffffff',
           '& .MuiBottomNavigationAction-root': {
             color: '#9e9e9e',
-            minWidth: userIsAdmin ? '11.11%' : '12.5%',
+            minWidth: userIsAdmin ? '20%' : '25%',
             transition: 'all 0.2s ease',
           },
           '& .Mui-selected': {
@@ -301,26 +299,6 @@ function NavigationBar() {
           icon={<BookIcon />} 
           component={Link} 
           to="/ledger"
-        />
-        <BottomNavigationAction 
-          icon={<RepeatIcon />} 
-          component={Link} 
-          to="/recurring-transactions"
-        />
-        <BottomNavigationAction 
-          icon={<CurrencyExchangeIcon />} 
-          component={Link} 
-          to="/currency-manager"
-        />
-        <BottomNavigationAction 
-          icon={<CategoryIcon />} 
-          component={Link} 
-          to="/expense-heads"
-        />
-        <BottomNavigationAction 
-          icon={<FolderSharedIcon />} 
-          component={Link} 
-          to="/master-records"
         />
         {userIsAdmin && (
           <BottomNavigationAction 
@@ -356,14 +334,15 @@ function SidebarDrawer({ open, onClose }) {
     { text: 'Expenses', icon: <ReceiptIcon />, path: '/expenses' },
     { text: 'Reports', icon: <BarChartIcon />, path: '/reports' },
     { text: 'My Ledgers', icon: <BookIcon />, path: '/ledger' },
-    { text: 'Currency Manager', icon: <CurrencyExchangeIcon />, path: '/currency-manager' },
-    { text: 'Expense Heads', icon: <CategoryIcon />, path: '/expense-heads' },
     { text: 'Master Records', icon: <FolderSharedIcon />, path: '/master-records' },
     { text: 'Recurring Transactions', icon: <RepeatIcon />, path: '/recurring-transactions' },
+    { text: 'Build Risk Profile', icon: <AssessmentIcon />, path: '/risk-profile' },
   ];
   
   if (userIsAdmin) {
     menuItems.push({ text: 'Admin', icon: <SupervisorAccountIcon />, path: '/admin' });
+    menuItems.push({ text: 'Currency Manager', icon: <CurrencyExchangeIcon />, path: '/currency-manager' });
+    menuItems.push({ text: 'MF Data Manager', icon: <StorageIcon />, path: '/mf-data-manager' });
   }
   
   return (
@@ -573,17 +552,17 @@ function AppRoutes({ currentUser }) {
                   </MaintenanceRoute>
                 </PrivateRoute>
               } />
-              <Route path="/expense-heads" element={
-                <PrivateRoute>
-                  <MaintenanceRoute>
-                    <ExpenseHeadManagement />
-                  </MaintenanceRoute>
-                </PrivateRoute>
-              } />
               <Route path="/my-profile" element={
                 <PrivateRoute>
                   <MaintenanceRoute>
                     <MyProfilePage />
+                  </MaintenanceRoute>
+                </PrivateRoute>
+              } />
+              <Route path="/risk-profile" element={
+                <PrivateRoute>
+                  <MaintenanceRoute>
+                    <RiskProfile />
                   </MaintenanceRoute>
                 </PrivateRoute>
               } />
@@ -593,8 +572,14 @@ function AppRoutes({ currentUser }) {
                 </PrivateRoute>
               } />
               
+              <Route path="/mf-data-manager" element={
+                <PrivateRoute requireAdmin={true}>
+                  <MutualFundDataManager />
+                </PrivateRoute>
+              } />
+              
               <Route path="/currency-manager" element={
-                <PrivateRoute>
+                <PrivateRoute requireAdmin={true}>
                   <MaintenanceRoute>
                     <CurrencyManager />
                   </MaintenanceRoute>

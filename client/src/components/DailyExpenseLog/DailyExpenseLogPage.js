@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Typography,
@@ -27,8 +27,18 @@ import {
   TableContainer,
   TableHead,
   TableRow,
-  Fab
+  Fab,
+  ToggleButtonGroup,
+  ToggleButton,
+  Backdrop,
+  useMediaQuery,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  Divider
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import { useTheme } from '@mui/material/styles';
 import SendIcon from '@mui/icons-material/Send';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
@@ -39,7 +49,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import AddIcon from '@mui/icons-material/Add';
 import { useAuth } from '../Auth/AuthContext';
 import { db } from '../../firebase/firebase';
-import { collection, addDoc, query, where, orderBy, getDocs, deleteDoc, doc, updateDoc, Timestamp, limit } from 'firebase/firestore';
+import { collection, addDoc, query, where, orderBy, getDocs, deleteDoc, doc, updateDoc, Timestamp, limit, getDoc } from 'firebase/firestore';
 import { parseTransactionWithGemini } from '../../utils/geminiApi';
 import { PAYMENT_MODES } from '../../config/constants';
 import { convertToINR } from '../../utils/currencyUtils';
@@ -56,6 +66,8 @@ function TabPanel({ children, value, index }) {
 
 function DailyExpenseLogPage() {
   const { currentUser } = useAuth();
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [tabValue, setTabValue] = useState(0);
   const [weekTabValue, setWeekTabValue] = useState(0);
   
@@ -96,6 +108,7 @@ function DailyExpenseLogPage() {
   // NLP transaction states (previously One-time)
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [parsedData, setParsedData] = useState(null);
   const [showParsedData, setShowParsedData] = useState(false);
   
@@ -152,6 +165,16 @@ function DailyExpenseLogPage() {
   // Bank Accounts and Credit Cards
   const [bankAccounts, setBankAccounts] = useState([]);
   const [creditCards, setCreditCards] = useState([]);
+
+  // Compute the periodic-only options for recurring dropdown and log them for diagnosis
+  const periodicRecurringOptions = useMemo(() => {
+    const list = recurringTransactions.filter((transaction) => {
+      const recurrenceType = transaction.recurrenceType || 'periodic';
+      return recurrenceType === 'periodic';
+    });
+    console.log('Recurring dropdown options (periodic only):', list.map(r => ({ id: r.id, transactionName: r.transactionName, recurrenceType: r.recurrenceType })));
+    return list;
+  }, [recurringTransactions]);
   
   const paymentTypes = ['Bank Account', 'Cash', 'Credit'];
   const currencies = ['INR', 'USD', 'EUR', 'AUD', 'GBP'];
@@ -205,8 +228,18 @@ function DailyExpenseLogPage() {
       const recurringSnapshot = await getDocs(recurringQuery);
       const recurringList = [];
       recurringSnapshot.forEach((doc) => {
-        recurringList.push({ id: doc.id, ...doc.data() });
+        const data = doc.data();
+        recurringList.push({ id: doc.id, ...data });
+        // Log each fetched record for diagnosis
+        console.log('Fetched recurring_expense:', { id: doc.id, transactionName: data.transactionName, recurrenceType: data.recurrenceType });
       });
+      // Also log summary counts
+      const counts = recurringList.reduce((acc, r) => {
+        const t = r.recurrenceType || 'periodic';
+        acc[t] = (acc[t] || 0) + 1;
+        return acc;
+      }, {});
+      console.log('Recurring transactions fetched. Counts by recurrenceType:', counts);
       setRecurringTransactions(recurringList);
     } catch (error) {
       console.error('Error fetching recurring transactions:', error);
@@ -356,9 +389,11 @@ function DailyExpenseLogPage() {
       // Only fetch transactions for the current ledger
       if (!currentLedger) {
         setTransactions([]);
+        console.log('🔍 fetchTransactions: No current ledger');
         return;
       }
       
+      console.log('🔍 fetchTransactions: Fetching for ledger', currentLedger.id);
       // Remove orderBy to avoid Firebase composite index requirement
       const transactionsQuery = query(
         collection(db, 'transactions'),
@@ -376,6 +411,14 @@ function DailyExpenseLogPage() {
         const dateB = b.date || new Date(0);
         return dateB - dateA;
       });
+      console.log('✅ Fetched', transactionsData.length, 'transactions:', transactionsData.map(t => ({ 
+        id: t.id,
+        type: t.type,
+        paymentMode: t.paymentMode,
+        amount: t.amount,
+        accountId: t.accountId,
+        accountName: t.accountName
+      })));
       setTransactions(transactionsData);
     } catch (error) {
       // Silently handle errors - empty state is perfectly fine
@@ -388,33 +431,60 @@ function DailyExpenseLogPage() {
   // Helper function to update account balance in ledger after transaction
   const updateAccountBalanceInLedger = async (ledgerId, accountId, amount, transactionType) => {
     try {
+      console.log('🔄 updateAccountBalanceInLedger called:', { ledgerId, accountId, amount, transactionType });
       const ledgerRef = doc(db, 'ledgers', ledgerId);
-      const ledgerDoc = await getDocs(query(collection(db, 'ledgers'), where('__name__', '==', ledgerId)));
+      const ledgerDocSnapshot = await getDoc(ledgerRef);
       
-      if (!ledgerDoc.empty) {
-        const ledgerData = ledgerDoc.docs[0].data();
+      if (ledgerDocSnapshot.exists()) {
+        const ledgerData = ledgerDocSnapshot.data();
         const accountBalances = ledgerData.accountBalances || [];
+        console.log('📊 Ledger found. Current accountBalances:', accountBalances);
         
         // Find the account in accountBalances array
         const accountIndex = accountBalances.findIndex(ab => ab.accountId === accountId);
+        console.log('🔍 Account index for', accountId, ':', accountIndex);
         
         if (accountIndex !== -1) {
-          // Update the specific account's closing balance
-          // For expenses: reduce balance (closingBalance = closingBalance - amount)
-          // For income: increase balance (closingBalance = closingBalance + amount)
+          const isCreditCard = accountBalances[accountIndex].accountType === 'creditCard';
           const currentClosing = accountBalances[accountIndex].closingBalance || accountBalances[accountIndex].openingBalance || 0;
+          console.log('💳 Account details:', { 
+            isCreditCard, 
+            currentClosing, 
+            accountType: accountBalances[accountIndex].accountType 
+          });
           
-          if (transactionType === 'expense') {
-            accountBalances[accountIndex].closingBalance = currentClosing - amount;
-          } else if (transactionType === 'income') {
-            accountBalances[accountIndex].closingBalance = currentClosing + amount;
+          // For credit cards: Opening (debt) + Expenses (purchases) - Income (payments)
+          // For bank accounts: Opening + Income - Expenses
+          if (isCreditCard) {
+            if (transactionType === 'expense') {
+              accountBalances[accountIndex].closingBalance = currentClosing + amount; // Debt increases
+              console.log('➕ Credit Card Expense: New balance =', accountBalances[accountIndex].closingBalance);
+            } else if (transactionType === 'income') {
+              accountBalances[accountIndex].closingBalance = currentClosing - amount; // Debt decreases (payment)
+              console.log('➖ Credit Card Income (Payment): New balance =', accountBalances[accountIndex].closingBalance);
+            }
+          } else {
+            // Bank account logic
+            if (transactionType === 'expense') {
+              accountBalances[accountIndex].closingBalance = currentClosing - amount;
+              console.log('➖ Bank Account Expense: New balance =', accountBalances[accountIndex].closingBalance);
+            } else if (transactionType === 'income') {
+              accountBalances[accountIndex].closingBalance = currentClosing + amount;
+              console.log('➕ Bank Account Income: New balance =', accountBalances[accountIndex].closingBalance);
+            }
           }
           
           // Update the ledger document with modified accountBalances
+          console.log('📝 Updating ledger with new accountBalances:', accountBalances);
           await updateDoc(ledgerRef, {
             accountBalances: accountBalances
           });
+          console.log('✅ Ledger updated successfully');
+        } else {
+          console.warn('⚠️ Account not found in ledger accountBalances');
         }
+      } else {
+        console.warn('⚠️ Ledger document not found');
       }
     } catch (error) {
       console.error('Error updating account balance in ledger:', error);
@@ -583,9 +653,13 @@ function DailyExpenseLogPage() {
     try {
       const parsed = await parseTransactionWithGemini(inputText, currentUser.uid);
       
-      // Set payment mode default to UPI and transaction type to Sundry
+      // Set payment mode default to UPI
       parsed.paymentMode = parsed.paymentMode || 'UPI';
-      parsed.category = 'Sundry';
+      
+      // Set default category based on transaction type
+      if (!parsed.category) {
+        parsed.category = parsed.type === 'income' ? 'Fixed' : 'Sundry';
+      }
       
       // Auto-select default account/card based on payment mode and ledger
       if (currentLedger?.accountBalances) {
@@ -697,6 +771,24 @@ function DailyExpenseLogPage() {
       return;
     }
 
+    // Validate accountId/accountName consistency
+    if (parsedData.accountId) {
+      const allAccounts = [...bankAccounts, ...creditCards];
+      const matchedAccount = allAccounts.find(a => a.id === parsedData.accountId);
+      if (matchedAccount) {
+        const expectedName = matchedAccount.accountNickName || matchedAccount.nickName || '';
+        if (parsedData.accountName && parsedData.accountName !== expectedName) {
+          setNotification({
+            open: true,
+            message: `Account mismatch: selected ID belongs to "${expectedName}" but name shows "${parsedData.accountName}". Please reselect the account.`,
+            severity: 'error'
+          });
+          return;
+        }
+      }
+    }
+
+    setIsSaving(true);
     try {
       // Generate standard description from parsed data
       const descPart = parsedData.transactionDesc || 'Unknown';
@@ -722,27 +814,36 @@ function DailyExpenseLogPage() {
         createdAt: Timestamp.now()
       };
 
+      console.log('💾 Saving transaction from parsed data:', transactionData);
       await addDoc(collection(db, 'transactions'), transactionData);
+      console.log('✅ Transaction saved successfully');
       
       // Update account balance in ledger if accountId is provided
       if (parsedData.accountId && currentLedger.id) {
+        console.log('🔄 Calling updateAccountBalanceInLedger for account:', parsedData.accountId);
         await updateAccountBalanceInLedger(
           currentLedger.id,
           parsedData.accountId,
           parseFloat(parsedData.amount),
           parsedData.type || 'expense'
         );
+      } else {
+        console.warn('⚠️ No accountId or ledger ID, skipping balance update');
       }
       
       setNotification({
         open: true,
-        message: `${parsedData.type === 'expense' ? 'Expense' : 'Income'} logged successfully!`,
+        message: `${parsedData.type === 'expense' ? 'Expense' : 'Income'} logged successfully! Refresh the Ledger page to see updated balance.`,
         severity: 'success'
       });
       
       handleClearParsedData();
       setInputText(''); // Clear input text after saving
+      console.log('📡 Transaction saved. Refetching transactions and ledger data...');
       fetchTransactions();
+      // Refetch the open ledger to update the accountBalances in other components
+      await fetchOpenLedger();
+      console.log('✅ All data refreshed. Updated balance should now be visible on Ledger page.');
     } catch (error) {
       console.error('Error saving transaction:', error);
       setNotification({
@@ -750,6 +851,8 @@ function DailyExpenseLogPage() {
         message: 'Error saving transaction',
         severity: 'error'
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -927,6 +1030,24 @@ function DailyExpenseLogPage() {
       return;
     }
 
+    // Validate accountId/accountName consistency
+    if (recurringData.accountId) {
+      const allAccounts = [...bankAccounts, ...creditCards];
+      const matchedAccount = allAccounts.find(a => a.id === recurringData.accountId);
+      if (matchedAccount) {
+        const expectedName = matchedAccount.accountNickName || matchedAccount.nickName || '';
+        if (recurringData.accountName && recurringData.accountName !== expectedName) {
+          setNotification({
+            open: true,
+            message: `Account mismatch: selected ID belongs to "${expectedName}" but name shows "${recurringData.accountName}". Please reselect the account.`,
+            severity: 'error'
+          });
+          return;
+        }
+      }
+    }
+
+    setIsSaving(true);
     try {
       const transactionData = {
         userId: currentUser.uid,
@@ -963,7 +1084,7 @@ function DailyExpenseLogPage() {
       
       setNotification({
         open: true,
-        message: 'Recurring transaction saved successfully!',
+        message: 'Recurring transaction saved successfully! Refresh the Ledger page to see updated balance.',
         severity: 'success'
       });
 
@@ -982,8 +1103,11 @@ function DailyExpenseLogPage() {
         category: 'Recurring'
       });
 
-      // Refresh transactions
+      // Refresh transactions and ledger data
+      console.log('📡 Recurring transaction saved. Refetching transactions and ledger data...');
       fetchTransactions();
+      await fetchOpenLedger();
+      console.log('✅ All data refreshed. Updated balance should now be visible on Ledger page.');
     } catch (error) {
       console.error('Error saving recurring expense:', error);
       setNotification({
@@ -991,6 +1115,8 @@ function DailyExpenseLogPage() {
         message: 'Failed to save recurring transaction',
         severity: 'error'
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1201,6 +1327,24 @@ function DailyExpenseLogPage() {
       return;
     }
 
+    // Validate accountId/accountName consistency
+    if (templateData.accountId) {
+      const allAccounts = [...bankAccounts, ...creditCards];
+      const matchedAccount = allAccounts.find(a => a.id === templateData.accountId);
+      if (matchedAccount) {
+        const expectedName = matchedAccount.accountNickName || matchedAccount.nickName || '';
+        if (templateData.accountName && templateData.accountName !== expectedName) {
+          setNotification({
+            open: true,
+            message: `Account mismatch: selected ID belongs to "${expectedName}" but name shows "${templateData.accountName}". Please reselect the account.`,
+            severity: 'error'
+          });
+          return;
+        }
+      }
+    }
+
+    setIsSaving(true);
     try {
       const transactionData = {
         userId: currentUser.uid,
@@ -1237,7 +1381,7 @@ function DailyExpenseLogPage() {
       
       setNotification({
         open: true,
-        message: 'Template transaction saved successfully!',
+        message: 'Template transaction saved successfully! Refresh the Ledger page to see updated balance.',
         severity: 'success'
       });
 
@@ -1258,8 +1402,11 @@ function DailyExpenseLogPage() {
         accountName: ''
       });
 
-      // Refresh transactions
+      // Refresh transactions and ledger data
+      console.log('📋 Template transaction saved. Refetching transactions and ledger data...');
       fetchTransactions();
+      await fetchOpenLedger();
+      console.log('✅ All data refreshed. Updated balance should now be visible on Ledger page.');
     } catch (error) {
       console.error('Error saving template expense:', error);
       setNotification({
@@ -1267,6 +1414,8 @@ function DailyExpenseLogPage() {
         message: 'Failed to save template transaction',
         severity: 'error'
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1406,6 +1555,24 @@ function DailyExpenseLogPage() {
       return;
     }
 
+    // Validate accountId/accountName consistency
+    if (manualData.accountId) {
+      const allAccounts = [...bankAccounts, ...creditCards];
+      const matchedAccount = allAccounts.find(a => a.id === manualData.accountId);
+      if (matchedAccount) {
+        const expectedName = matchedAccount.accountNickName || matchedAccount.nickName || '';
+        if (manualData.accountName && manualData.accountName !== expectedName) {
+          setNotification({
+            open: true,
+            message: `Account mismatch: selected ID belongs to "${expectedName}" but name shows "${manualData.accountName}". Please reselect the account.`,
+            severity: 'error'
+          });
+          return;
+        }
+      }
+    }
+
+    setIsSaving(true);
     try {
       const descPart = manualData.transactionDesc || 'Unknown';
       const standardDescription = `${descPart} - ${manualData.category}`;
@@ -1430,10 +1597,13 @@ function DailyExpenseLogPage() {
         createdAt: Timestamp.now()
       };
 
+      console.log('💾 Saving manual transaction:', transactionData);
       await addDoc(collection(db, 'transactions'), transactionData);
+      console.log('✅ Manual transaction saved successfully');
       
       // Update account balance in ledger if accountId is provided
       if (manualData.accountId && currentLedger.id) {
+        console.log('🔄 Calling updateAccountBalanceInLedger for account:', manualData.accountId);
         await updateAccountBalanceInLedger(
           currentLedger.id,
           manualData.accountId,
@@ -1444,12 +1614,16 @@ function DailyExpenseLogPage() {
       
       setNotification({
         open: true,
-        message: `${manualData.transactionType === 'expense' ? 'Expense' : 'Income'} logged successfully!`,
+        message: `${manualData.transactionType === 'expense' ? 'Expense' : 'Income'} logged successfully! Refresh the Ledger page to see updated balance.`,
         severity: 'success'
       });
       
       handleResetManualForm();
+      console.log('📡 Manual transaction saved. Refetching transactions and ledger data...');
       fetchTransactions();
+      // Refetch the open ledger to update the accountBalances in other components
+      await fetchOpenLedger();
+      console.log('✅ All data refreshed. Updated balance should now be visible on Ledger page.');
     } catch (error) {
       console.error('Error saving manual transaction:', error);
       setNotification({
@@ -1457,6 +1631,8 @@ function DailyExpenseLogPage() {
         message: 'Error saving transaction',
         severity: 'error'
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1606,6 +1782,24 @@ function DailyExpenseLogPage() {
       return;
     }
 
+    // Validate accountId/accountName consistency
+    if (incomeData.accountId) {
+      const allAccounts = [...bankAccounts, ...creditCards];
+      const matchedAccount = allAccounts.find(a => a.id === incomeData.accountId);
+      if (matchedAccount) {
+        const expectedName = matchedAccount.accountNickName || matchedAccount.nickName || '';
+        if (incomeData.accountName && incomeData.accountName !== expectedName) {
+          setNotification({
+            open: true,
+            message: `Account mismatch: selected ID belongs to "${expectedName}" but name shows "${incomeData.accountName}". Please reselect the account.`,
+            severity: 'error'
+          });
+          return;
+        }
+      }
+    }
+
+    setIsSaving(true);
     try {
       const descPart = incomeData.transactionDesc || 'Unknown';
       const standardDescription = `${descPart} - ${incomeData.category}`;
@@ -1644,12 +1838,15 @@ function DailyExpenseLogPage() {
       
       setNotification({
         open: true,
-        message: 'Income logged successfully!',
+        message: 'Income logged successfully! Refresh the Ledger page to see updated balance.',
         severity: 'success'
       });
       
       handleResetIncomeForm();
+      console.log('💡 Income transaction saved. Refetching transactions and ledger data...');
       fetchTransactions();
+      await fetchOpenLedger();
+      console.log('✅ All data refreshed. Updated balance should now be visible on Ledger page.');
     } catch (error) {
       console.error('Error saving income transaction:', error);
       setNotification({
@@ -1657,6 +1854,8 @@ function DailyExpenseLogPage() {
         message: 'Error saving transaction',
         severity: 'error'
       });
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -1689,7 +1888,9 @@ function DailyExpenseLogPage() {
       expenseHead: transaction.expenseHead || '',
       amount: transaction.amount || '',
       currency: transaction.currency || 'INR',
-      paymentMode: transaction.paymentMode || 'UPI'
+      paymentMode: transaction.paymentMode || 'UPI',
+      accountId: transaction.accountId || '',
+      accountName: transaction.accountName || ''
     });
     setEditDialogOpen(true);
   };
@@ -1706,6 +1907,23 @@ function DailyExpenseLogPage() {
       return;
     }
 
+    // Validate accountId/accountName consistency
+    if (editingTransaction.accountId) {
+      const allAccounts = [...bankAccounts, ...creditCards];
+      const matchedAccount = allAccounts.find(a => a.id === editingTransaction.accountId);
+      if (matchedAccount) {
+        const expectedName = matchedAccount.accountNickName || matchedAccount.nickName || '';
+        if (editingTransaction.accountName && editingTransaction.accountName !== expectedName) {
+          setNotification({
+            open: true,
+            message: `Account mismatch: selected ID belongs to "${expectedName}" but name shows "${editingTransaction.accountName}". Please reselect the account.`,
+            severity: 'error'
+          });
+          return;
+        }
+      }
+    }
+
     try {
       const transactionRef = doc(db, 'transactions', editingTransaction.id);
       await updateDoc(transactionRef, {
@@ -1718,6 +1936,8 @@ function DailyExpenseLogPage() {
         amount: parseFloat(editingTransaction.amount),
         currency: editingTransaction.currency,
         paymentMode: editingTransaction.paymentMode,
+        accountId: editingTransaction.accountId || '',
+        accountName: editingTransaction.accountName || '',
         updatedAt: Timestamp.now()
       });
 
@@ -1783,98 +2003,209 @@ function DailyExpenseLogPage() {
     return `${currency} ${amount.toFixed(2)}`;
   };
 
+  // Per-account running closing balance — mirrors LedgerManagement.calculateLedgerMetrics logic
+  const accountBalanceSummary = useMemo(() => {
+    if (!currentLedger?.accountBalances?.length || !transactions) return [];
+
+    const getINRAmount = (t) => {
+      const currency = (t.currency || 'INR').toUpperCase();
+      if (currency === 'INR' || currency === 'RUPEES') return parseFloat(t.amount) || 0;
+      if (t.amountInINR !== undefined && t.amountInINR !== null) return t.amountInINR;
+      return convertToINR(t.amount, t.currency);
+    };
+
+    // Only transactions linked to an account (no orphan/cash entries)
+    const validTxns = transactions.filter(t => t.accountId);
+
+    return currentLedger.accountBalances.map((account) => {
+      const accountId = account.accountId;
+      const openingBal = parseFloat(account.openingBalance) || 0;
+      const isCreditCard = account.accountType === 'creditCard';
+      const accountTxns = validTxns.filter(t => t.accountId === accountId);
+
+      const accountIncome = accountTxns
+        .filter(t => t.type === 'income')
+        .reduce((sum, t) => sum + getINRAmount(t), 0);
+      const accountExpenses = accountTxns
+        .filter(t => t.type === 'expense')
+        .reduce((sum, t) => sum + getINRAmount(t), 0);
+
+      const closingBal = isCreditCard
+        ? openingBal + accountExpenses - accountIncome   // credit card: debt increases
+        : openingBal + accountIncome - accountExpenses;  // bank: balance decreases
+
+      return {
+        accountId,
+        accountName: account.accountName || account.accountNickName || accountId,
+        accountType: account.accountType,
+        balance: closingBal,
+        isCreditCard
+      };
+    });
+  }, [transactions, currentLedger]);
+
   return (
-    <Box sx={{ pb: 10, position: 'relative' }}>
-      {/* Header */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
+    <Box sx={{ pb: 10, position: 'relative', bgcolor: '#f8f9fb', minHeight: '100vh' }}>
+
+      {/* Save-in-progress overlay */}
+      <Backdrop open={isSaving} sx={{ position: 'fixed', zIndex: 1400, backgroundColor: 'rgba(0,0,0,0.45)', flexDirection: 'column', gap: 2 }}>
+        <CircularProgress sx={{ color: '#fff' }} size={48} thickness={4} />
+        <Typography variant="body2" sx={{ color: '#fff', fontWeight: 600, letterSpacing: 0.5 }}>Saving…</Typography>
+      </Backdrop>
+
+      {/* ── Sticky Header ── */}
+      <Box sx={{
+        position: 'sticky', top: 0, zIndex: 10,
+        bgcolor: '#fff', borderBottom: '1px solid #e8ecf0',
+        px: 2, py: 1.25,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
+      }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <ReceiptLongIcon sx={{ fontSize: 24, color: '#42a5f5' }} />
-          <Typography variant="h6" fontWeight="700" sx={{ fontSize: '1.1rem' }}>
+          <ReceiptLongIcon sx={{ fontSize: 20, color: '#5e35b1' }} />
+          <Typography fontWeight="800" sx={{ fontSize: '1rem', letterSpacing: '-0.2px', color: '#1a1a2e' }}>
             Add Transaction
           </Typography>
         </Box>
-        
-        {/* Ledger Display */}
         {ledgerLoading ? (
-          <CircularProgress size={16} />
+          <CircularProgress size={18} />
         ) : currentLedger ? (
           <Chip
-            icon={<BookIcon sx={{ fontSize: 16 }} />}
+            icon={<BookIcon sx={{ fontSize: '14px !important' }} />}
             label={currentLedger.name}
             size="small"
-            sx={{
-              fontWeight: 600,
-              fontSize: '0.75rem',
-              height: 28,
-              bgcolor: '#42a5f5',
-              color: '#fff',
-              '& .MuiChip-icon': { color: '#fff' }
-            }}
+            sx={{ fontWeight: 600, fontSize: '0.7rem', bgcolor: '#ede7f6', color: '#4527a0', border: '1px solid #d1c4e9' }}
           />
         ) : (
-          <Chip
-            label="No Ledger"
-            size="small"
-            color="error"
-            sx={{ fontSize: '0.75rem', height: 28 }}
-          />
+          <Chip label="No Ledger" size="small" color="error" sx={{ fontWeight: 600, fontSize: '0.7rem' }} />
         )}
       </Box>
 
-      {/* Warning if no ledger */}
-      {!ledgerLoading && !currentLedger && (
-        <Alert severity="warning" sx={{ mb: 3 }}>
-          No open ledger found. Please start a new monthly ledger from the Admin page before entering transactions.
-        </Alert>
-      )}
+      <Box sx={{ px: 2, pt: 2 }}>
 
-      {/* Compact Mobile-First Tabs */}
-      <Paper elevation={1} sx={{ mb: 2 }}>
-        <Tabs
-          value={tabValue}
-          onChange={(e, newValue) => {
-            setTabValue(newValue);
-            handleClearParsedData();
-          }}
-          variant="scrollable"
-          scrollButtons="auto"
-          allowScrollButtonsMobile
-          sx={{
-            backgroundColor: '#ffffff',
-            borderRadius: { xs: 0, sm: 1 },
-            minHeight: { xs: 42, sm: 48 },
-            '& .MuiTab-root': { 
-              textTransform: 'none', 
-              fontWeight: 600, 
-              fontSize: { xs: '0.8rem', sm: '0.9rem' },
-              minWidth: { xs: 60, sm: 80 },
-              minHeight: { xs: 42, sm: 48 },
-              px: { xs: 1.5, sm: 2 },
-              py: { xs: 1, sm: 1.5 }
-            },
-            '& .Mui-selected': { color: '#616161' },
-            '& .MuiTabs-indicator': { 
-              backgroundColor: '#616161',
-              height: 3
-            }
-          }}
-        >
-          <Tab label="✨ NLP" />
-          <Tab label="📋 TMPL" />
-          <Tab label="✏️ MNL" />
-          <Tab label="🔁 RCNG" />
-          <Tab 
-            label="💰 INCM" 
-            sx={{ 
-              color: '#4caf50 !important',
-              '&.Mui-selected': { 
-                color: '#4caf50 !important',
-                backgroundColor: 'rgba(76, 175, 80, 0.08)'
-              }
-            }}
-          />
-        </Tabs>
-      </Paper>
+        {/* Warning if no ledger */}
+        {!ledgerLoading && !currentLedger && (
+          <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+            No open ledger found. Please start a new monthly ledger from the Ledger page before entering transactions.
+          </Alert>
+        )}
+
+        {/* ── Balance Summary (compact inline row) ── */}
+        {accountBalanceSummary.length > 0 && (
+          <Accordion disableGutters elevation={0} sx={{
+            mb: 2, borderRadius: '12px !important', overflow: 'hidden',
+            border: '1px solid #e8ecf0', bgcolor: '#fff',
+            '&:before': { display: 'none' }
+          }}>
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon sx={{ fontSize: 18, color: '#9e9e9e' }} />}
+              sx={{
+                minHeight: '44px !important', px: 2, py: 0,
+                '& .MuiAccordionSummary-content': { my: '0 !important', alignItems: 'center', gap: 1 }
+              }}
+            >
+              <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: '#6b7280', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+                Account Balances
+              </Typography>
+              <Typography sx={{ fontSize: '0.7rem', color: '#9ca3af' }}>
+                · {accountBalanceSummary.length} account{accountBalanceSummary.length > 1 ? 's' : ''}
+              </Typography>
+            </AccordionSummary>
+            <AccordionDetails sx={{ px: 2, pt: 0, pb: 1.5 }}>
+              <Divider sx={{ mb: 1 }} />
+              {accountBalanceSummary.map((acc, idx) => (
+                <Box key={acc.accountId} sx={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  py: '6px', borderBottom: idx < accountBalanceSummary.length - 1 ? '1px solid #f5f5f5' : 'none'
+                }}>
+                  <Typography sx={{ fontSize: '0.82rem', color: '#555' }}>
+                    {acc.accountName}{acc.isCreditCard ? ' (CC)' : ''}
+                  </Typography>
+                  <Typography fontWeight="700" sx={{
+                    fontSize: '0.82rem',
+                    color: acc.isCreditCard
+                      ? (acc.balance > 0 ? '#dc2626' : '#16a34a')
+                      : (acc.balance >= 0 ? '#16a34a' : '#dc2626')
+                  }}>
+                    {formatCurrency(acc.balance, 'INR')}
+                  </Typography>
+                </Box>
+              ))}
+            </AccordionDetails>
+          </Accordion>
+        )}
+
+        {/* ── Mode Selector ── */}
+        {(() => {
+          const modes = [
+            { value: 0, label: 'Smart', sublabel: 'NLP', icon: '✨', color: '#5e35b1', bg: '#ede7f6', border: '#d1c4e9' },
+            { value: 1, label: 'Template', sublabel: 'TMPL', icon: '📋', color: '#1565c0', bg: '#e3f2fd', border: '#bbdefb' },
+            { value: 2, label: 'Manual', sublabel: 'MNL', icon: '✏️', color: '#b45309', bg: '#fffbeb', border: '#fde68a' },
+            { value: 3, label: 'Recurring', sublabel: 'RCNG', icon: '🔁', color: '#0f766e', bg: '#f0fdfa', border: '#99f6e4' },
+            { value: 4, label: 'Income', sublabel: 'INCM', icon: '💰', color: '#15803d', bg: '#f0fdf4', border: '#bbf7d0' },
+          ];
+          return (
+            <Box sx={{ mb: 2 }}>
+              {/* Mode label */}
+              <Typography sx={{ fontSize: '0.7rem', fontWeight: 600, color: '#9ca3af', letterSpacing: '0.5px', textTransform: 'uppercase', mb: 1 }}>
+                Entry Mode
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
+                {modes.map(m => {
+                  const selected = tabValue === m.value;
+                  return (
+                    <Box
+                      key={m.value}
+                      onClick={() => { setTabValue(m.value); handleClearParsedData(); }}
+                      sx={{
+                        display: 'flex', flexDirection: 'column', alignItems: 'center',
+                        py: '10px', px: '4px', borderRadius: '12px', cursor: 'pointer',
+                        border: `2px solid ${selected ? m.color : m.border}`,
+                        bgcolor: selected ? m.color : m.bg,
+                        transition: 'all 0.15s ease',
+                        boxShadow: selected ? `0 2px 8px ${m.color}40` : 'none',
+                        '&:active': { transform: 'scale(0.96)' }
+                      }}
+                    >
+                      <Typography sx={{ fontSize: '1.1rem', lineHeight: 1, mb: '4px' }}>{m.icon}</Typography>
+                      <Typography sx={{
+                        fontSize: '0.6rem', fontWeight: 700, letterSpacing: '0.3px',
+                        color: selected ? '#fff' : m.color, lineHeight: 1.2, textAlign: 'center'
+                      }}>
+                        {m.sublabel}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+              {/* Active mode banner */}
+              {(() => {
+                const active = modes.find(m => m.value === tabValue);
+                const descriptions = {
+                  0: 'Describe your expense in plain English — AI will parse it',
+                  1: 'Pick from your saved transaction templates',
+                  2: 'Fill in all fields manually',
+                  3: 'Log a scheduled recurring expense',
+                  4: 'Record salary, freelance, or other income',
+                };
+                return (
+                  <Box sx={{
+                    mt: 1.5, px: 1.5, py: 1, borderRadius: '10px',
+                    bgcolor: active.bg, border: `1px solid ${active.border}`,
+                    display: 'flex', alignItems: 'center', gap: 1
+                  }}>
+                    <Typography sx={{ fontSize: '0.88rem' }}>{active.icon}</Typography>
+                    <Box>
+                      <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: active.color }}>{active.label}</Typography>
+                      <Typography sx={{ fontSize: '0.68rem', color: '#6b7280', lineHeight: 1.3 }}>{descriptions[tabValue]}</Typography>
+                    </Box>
+                  </Box>
+                );
+              })()}
+            </Box>
+          );
+        })()}
+
 
         {/* MANUAL TRANSACTION TAB */}
         <TabPanel value={tabValue} index={2}>
@@ -1952,8 +2283,12 @@ function DailyExpenseLogPage() {
                         const selectedId = e.target.value;
                         const accounts = getAvailableAccounts(manualData.paymentMode);
                         const selected = accounts.find(acc => acc.id === selectedId);
-                        handleManualFieldChange('accountId', selectedId);
-                        handleManualFieldChange('accountName', selected ? (selected.accountNickName || selected.nickName) : '');
+                        
+                        setManualData({
+                          ...manualData,
+                          accountId: selectedId,
+                          accountName: selected ? (selected.accountNickName || selected.nickName) : ''
+                        });
                       }}
                     >
                       <MenuItem value="">
@@ -2028,6 +2363,8 @@ function DailyExpenseLogPage() {
                     variant="contained"
                     fullWidth
                     onClick={handleSaveManualTransaction}
+                    disabled={isSaving}
+                    startIcon={isSaving ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : null}
                     sx={{
                       background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
                       color: '#ffffff !important',
@@ -2038,10 +2375,11 @@ function DailyExpenseLogPage() {
                       fontWeight: 600,
                       '&:hover': {
                         background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important',
-                      }
+                      },
+                      '&.Mui-disabled': { background: '#bdbdbd !important', color: '#fff !important' }
                     }}
                   >
-                    Save
+                    {isSaving ? 'Saving…' : 'Save'}
                   </Button>
                   <Button
                     variant="outlined"
@@ -2200,17 +2538,20 @@ function DailyExpenseLogPage() {
                     <FormControl fullWidth size="small">
                       <InputLabel>Currency</InputLabel>
                       <Select
-                        value={parsedData.type}
-                        label="Transaction Type"
-                        onChange={(e) => handleParsedFieldChange('type', e.target.value)}
+                        value={parsedData.currency || 'INR'}
+                        label="Currency"
+                        onChange={(e) => handleParsedFieldChange('currency', e.target.value)}
                         sx={{
                           borderRadius: 2,
                           '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
                           '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
                         }}
                       >
-                        <MenuItem value="expense">Expense</MenuItem>
-                        <MenuItem value="income">Income</MenuItem>
+                        <MenuItem value="INR">INR</MenuItem>
+                        <MenuItem value="USD">USD</MenuItem>
+                        <MenuItem value="EUR">EUR</MenuItem>
+                        <MenuItem value="GBP">GBP</MenuItem>
+                        <MenuItem value="AED">AED</MenuItem>
                       </Select>
                     </FormControl>
                   </Grid>
@@ -2296,56 +2637,111 @@ function DailyExpenseLogPage() {
                     />
                   </Grid>
 
-                  <Grid item xs={12} sm={6}>
-                    <FormControl fullWidth size="small">
-                      <InputLabel>Expense Head</InputLabel>
-                      <Select
-                        value={parsedData.expenseHead || ''}
-                        label="Expense Head"
-                        onChange={(e) => handleParsedFieldChange('expenseHead', e.target.value)}
-                        sx={{
-                          borderRadius: 2,
-                          '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
-                          '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
-                        }}
-                      >
-                        <MenuItem value="">
-                          <em>Select Expense Head</em>
-                        </MenuItem>
-                        {expenseHeads.map(head => (
-                          <MenuItem key={head} value={head}>{head}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  </Grid>
+                  {/* Conditional Fields Based on Transaction Type */}
+                  {parsedData.type === 'income' ? (
+                    <>
+                      {/* For Income: Category Dropdown */}
+                      <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Category</InputLabel>
+                          <Select
+                            value={parsedData.category || 'Fixed'}
+                            label="Category"
+                            onChange={(e) => handleParsedFieldChange('category', e.target.value)}
+                            sx={{
+                              borderRadius: 2,
+                              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
+                              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                            }}
+                          >
+                            {incomeCategories.map(cat => (
+                              <MenuItem key={cat} value={cat}>{cat}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
 
-                  {/* Row 5: Category and Transaction Type as Text Labels */}
-                  <Grid item xs={12} sm={6}>
-                    <Box sx={{ display: 'flex', gap: 3, alignItems: 'center', height: '100%', pl: 1 }}>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                          Category
-                        </Typography>
-                        <Typography variant="body2" fontWeight={500}>
-                          {parsedData.category || 'Sundry'}
-                        </Typography>
-                      </Box>
-                      <Box>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
-                          Type
-                        </Typography>
-                        <Typography variant="body2" fontWeight={500}>
-                          {parsedData.type === 'income' ? 'Income' : 'Expense'}
-                        </Typography>
-                      </Box>
-                    </Box>
-                  </Grid>
+                      {/* For Income: Income Source Dropdown */}
+                      <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Income Source</InputLabel>
+                          <Select
+                            value={parsedData.expenseHead || ''}
+                            label="Income Source"
+                            onChange={(e) => handleParsedFieldChange('expenseHead', e.target.value)}
+                            sx={{
+                              borderRadius: 2,
+                              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
+                              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                            }}
+                          >
+                            <MenuItem value="">
+                              <em>Select Income Source</em>
+                            </MenuItem>
+                            {incomeSources.map(source => (
+                              <MenuItem key={source} value={source}>{source}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                    </>
+                  ) : (
+                    <>
+                      {/* For Expense: Expense Head Dropdown */}
+                      <Grid item xs={12} sm={6}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Expense Head</InputLabel>
+                          <Select
+                            value={parsedData.expenseHead || ''}
+                            label="Expense Head"
+                            onChange={(e) => handleParsedFieldChange('expenseHead', e.target.value)}
+                            sx={{
+                              borderRadius: 2,
+                              '&:hover .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' },
+                              '&.Mui-focused .MuiOutlinedInput-notchedOutline': { borderColor: '#616161' }
+                            }}
+                          >
+                            <MenuItem value="">
+                              <em>Select Expense Head</em>
+                            </MenuItem>
+                            {expenseHeads.map(head => (
+                              <MenuItem key={head} value={head}>{head}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+
+                      {/* For Expense: Category and Type as Text Labels */}
+                      <Grid item xs={12} sm={6}>
+                        <Box sx={{ display: 'flex', gap: 3, alignItems: 'center', height: '100%', pl: 1 }}>
+                          <Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                              Category
+                            </Typography>
+                            <Typography variant="body2" fontWeight={500}>
+                              {parsedData.category || 'Sundry'}
+                            </Typography>
+                          </Box>
+                          <Box>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                              Type
+                            </Typography>
+                            <Typography variant="body2" fontWeight={500}>
+                              Expense
+                            </Typography>
+                          </Box>
+                        </Box>
+                      </Grid>
+                    </>
+                  )}
                 </Grid>
 
                 <Button
                   variant="contained"
                   fullWidth
                   onClick={handleSaveTransaction}
+                  disabled={isSaving}
+                  startIcon={isSaving ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : null}
                   size="medium"
                   sx={{
                     mt: 3,
@@ -2355,10 +2751,11 @@ function DailyExpenseLogPage() {
                     fontWeight: 600,
                     '&:hover': {
                       background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important',
-                    }
+                    },
+                    '&.Mui-disabled': { background: '#bdbdbd !important', color: '#fff !important' }
                   }}
                 >
-                  Save Transaction
+                  {isSaving ? 'Saving…' : 'Save Transaction'}
                 </Button>
               </>
             )}
@@ -2591,6 +2988,8 @@ function DailyExpenseLogPage() {
                         variant="contained"
                         fullWidth
                         onClick={handleSaveTemplateExpense}
+                        disabled={isSaving}
+                        startIcon={isSaving ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : null}
                         size="medium"
                         sx={{
                           background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
@@ -2599,10 +2998,11 @@ function DailyExpenseLogPage() {
                           fontWeight: 600,
                           '&:hover': {
                             background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important',
-                          }
+                          },
+                          '&.Mui-disabled': { background: '#bdbdbd !important', color: '#fff !important' }
                         }}
                       >
-                        Save Transaction
+                        {isSaving ? 'Saving…' : 'Save Transaction'}
                       </Button>
                       <Button
                         variant="outlined"
@@ -2654,11 +3054,16 @@ function DailyExpenseLogPage() {
                     <MenuItem value="">
                       <em>{recurringTransactions.length === 0 ? 'No recurring transactions setup' : 'Select a transaction'}</em>
                     </MenuItem>
-                    {recurringTransactions.map((transaction) => (
-                      <MenuItem key={transaction.id} value={transaction.id}>
-                        {transaction.transactionName} ({transaction.currency} {transaction.amount})
-                      </MenuItem>
-                    ))}
+                    {recurringTransactions
+                      .filter((transaction) => {
+                        const recurrenceType = transaction.recurrenceType || 'periodic';
+                        return recurrenceType === 'periodic';
+                      })
+                      .map((transaction) => (
+                        <MenuItem key={transaction.id} value={transaction.id}>
+                          {transaction.transactionName} ({transaction.currency} {transaction.amount})
+                        </MenuItem>
+                      ))}
                   </Select>
                 </FormControl>
               </Grid>
@@ -2794,8 +3199,11 @@ function DailyExpenseLogPage() {
                             const accounts = getAvailableAccounts(recurringData.paymentMode);
                             const selected = accounts.find(acc => acc.id === selectedId);
                             
-                            handleRecurringFieldChange('accountId', selectedId);
-                            handleRecurringFieldChange('accountName', selected ? (selected.accountNickName || selected.nickName) : '');
+                            setRecurringData({
+                              ...recurringData,
+                              accountId: selectedId,
+                              accountName: selected ? (selected.accountNickName || selected.nickName) : ''
+                            });
                           }}
                           sx={{
                             borderRadius: 2,
@@ -2865,6 +3273,8 @@ function DailyExpenseLogPage() {
                         variant="contained"
                         fullWidth
                         onClick={handleSaveRecurringExpense}
+                        disabled={isSaving}
+                        startIcon={isSaving ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : null}
                         size="medium"
                         sx={{
                           background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
@@ -2873,10 +3283,11 @@ function DailyExpenseLogPage() {
                           fontWeight: 600,
                           '&:hover': {
                             background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important',
-                          }
+                          },
+                          '&.Mui-disabled': { background: '#bdbdbd !important', color: '#fff !important' }
                         }}
                       >
-                        Save Transaction
+                        {isSaving ? 'Saving…' : 'Save Transaction'}
                       </Button>
                       <Button
                         variant="outlined"
@@ -3044,8 +3455,11 @@ function DailyExpenseLogPage() {
                         const accounts = getAvailableAccounts(incomeData.paymentMode);
                         const selected = accounts.find(acc => acc.id === selectedId);
                         
-                        handleIncomeFieldChange('accountId', selectedId);
-                        handleIncomeFieldChange('accountName', selected ? (selected.accountNickName || selected.nickName) : '');
+                        setIncomeData({
+                          ...incomeData,
+                          accountId: selectedId,
+                          accountName: selected ? (selected.accountNickName || selected.nickName) : ''
+                        });
                       }}
                       sx={{
                         borderRadius: 2,
@@ -3134,6 +3548,8 @@ function DailyExpenseLogPage() {
                     variant="contained"
                     fullWidth
                     onClick={handleSaveIncomeTransaction}
+                    disabled={isSaving}
+                    startIcon={isSaving ? <CircularProgress size={16} sx={{ color: '#fff' }} /> : null}
                     size="medium"
                     sx={{
                       background: 'linear-gradient(135deg, #424242 0%, #212121 100%) !important',
@@ -3142,10 +3558,11 @@ function DailyExpenseLogPage() {
                       fontWeight: 600,
                       '&:hover': {
                         background: 'linear-gradient(135deg, #616161 0%, #424242 100%) !important',
-                      }
+                      },
+                      '&.Mui-disabled': { background: '#bdbdbd !important', color: '#fff !important' }
                     }}
                   >
-                    Save
+                    {isSaving ? 'Saving…' : 'Save'}
                   </Button>
                   <Button
                     variant="outlined"
@@ -3361,6 +3778,8 @@ function DailyExpenseLogPage() {
         onClose={() => setEditDialogOpen(false)}
         maxWidth="sm"
         fullWidth
+        fullScreen={isMobile}
+        PaperProps={{ sx: { borderRadius: isMobile ? 0 : 2 } }}
       >
         <DialogTitle>Edit Transaction</DialogTitle>
         <DialogContent>
@@ -3486,9 +3905,10 @@ function DailyExpenseLogPage() {
             )}
           </Grid>
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setEditDialogOpen(false)}>Cancel</Button>
+        <DialogActions sx={{ p: 2, gap: 1, flexDirection: { xs: 'column-reverse', sm: 'row' } }}>
+          <Button fullWidth={isMobile} variant="outlined" onClick={() => setEditDialogOpen(false)}>Cancel</Button>
           <Button 
+            fullWidth={isMobile}
             onClick={handleUpdateTransaction} 
             variant="contained"
             color="primary"
@@ -3524,15 +3944,16 @@ function DailyExpenseLogPage() {
           bottom: { xs: 70, sm: 80 }, 
           right: { xs: 16, sm: 24 },
           display: tabValue === 0 ? 'none' : { xs: 'flex', sm: 'none' },
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          background: 'linear-gradient(135deg, #5e35b1 0%, #7c4dff 100%)',
           '&:hover': {
-            background: 'linear-gradient(135deg, #764ba2 0%, #667eea 100%)',
+            background: 'linear-gradient(135deg, #7c4dff 0%, #5e35b1 100%)',
           }
         }}
       >
         <AddIcon />
       </Fab>
 
+      </Box>{/* end px wrapper */}
       <Footer />
     </Box>
   );

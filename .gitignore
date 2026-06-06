@@ -42,3 +42,7 @@ Thumbs.db
 
 # Misc
 .cache/
+
+# Large data files
+*.parquet
+*.parquet.gz

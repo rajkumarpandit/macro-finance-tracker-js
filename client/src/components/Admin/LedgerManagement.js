@@ -3,29 +3,20 @@ import {
   Box,
   Typography,
   Button,
-  Paper,
   TextField,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   Chip,
-  List,
-  ListItem,
-  ListItemText,
   Checkbox,
   FormControlLabel,
   FormGroup,
   Alert,
   CircularProgress,
-  Divider,
   Collapse,
   IconButton,
   Grid,
-  Table,
-  TableBody,
-  TableCell,
-  TableRow,
   Select,
   MenuItem,
   FormControl,
@@ -37,11 +28,13 @@ import LockIcon from '@mui/icons-material/Lock';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import DeleteIcon from '@mui/icons-material/Delete';
 import EditIcon from '@mui/icons-material/Edit';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { useAuth } from '../Auth/AuthContext';
 import { db } from '../../firebase/firebase';
-import { collection, addDoc, query, where, getDocs, updateDoc, doc, Timestamp, orderBy, limit } from 'firebase/firestore';
+import { collection, addDoc, query, where, getDocs, updateDoc, doc, Timestamp, limit } from 'firebase/firestore';
 import { convertToINR, formatINR } from '../../utils/currencyUtils';
 
 function LedgerManagement({ showHeader = false }) {
@@ -71,6 +64,15 @@ function LedgerManagement({ showHeader = false }) {
   const [bankAccounts, setBankAccounts] = useState([]);
   const [creditCards, setCreditCards] = useState([]);
   const [accountBalances, setAccountBalances] = useState([{ accountId: '', accountName: '', accountType: '', openingBalance: '' }]);
+  const [showBalances, setShowBalances] = useState(false);
+
+  // Helper function to mask balance values
+  const maskBalance = (value) => {
+    if (!showBalances) {
+      return '***';
+    }
+    return value;
+  };
 
   const fetchTransactionsForLedger = useCallback(async (ledgerId) => {
     try {
@@ -102,11 +104,31 @@ function LedgerManagement({ showHeader = false }) {
       openingBal = parseFloat(ledger.openingBalance || 0);
     }
     
+    console.log('📊 calculateLedgerMetrics - Ledger:', ledger.name);
+    console.log('   Opening balance:', openingBal);
+    console.log('   Total transactions:', txns.length);
+    console.log('   Ledger accountBalances:', ledger.accountBalances);
+    
     // Only consider transactions with accountId (non-orphan transactions)
     const validTxns = txns.filter(t => t.accountId);
+    console.log('   Valid transactions (with accountId):', validTxns.length);
+    console.log('   Valid transactions:', validTxns.map(t => ({ 
+      id: t.id, 
+      type: t.type, 
+      paymentMode: t.paymentMode,
+      amount: t.amount,
+      accountId: t.accountId,
+      accountName: t.accountName
+    })));
     
-    // Helper function to get INR amount - use stored amountInINR if available, otherwise convert
+    // Helper function to get INR amount
+    // - For INR transactions: always use t.amount directly (stored amountInINR can be stale/wrong for INR)
+    // - For foreign currency: use stored amountInINR to preserve the historical exchange rate
     const getINRAmount = (t) => {
+      const currency = (t.currency || 'INR').toUpperCase();
+      if (currency === 'INR' || currency === 'RUPEES') {
+        return parseFloat(t.amount) || 0;
+      }
       if (t.amountInINR !== undefined && t.amountInINR !== null) {
         return t.amountInINR;
       }
@@ -138,6 +160,8 @@ function LedgerManagement({ showHeader = false }) {
       .filter(t => t.type === 'expense')
       .reduce((sum, t) => sum + getINRAmount(t), 0);
     
+    console.log('   Totals - Income:', totalIncome, 'Expenses:', totalExpenses, 'CC Expenses:', creditCardExpenses);
+    
     // Calculate per-account closing balances
     const accountClosingBalances = {};
     if (ledger.accountBalances && Array.isArray(ledger.accountBalances)) {
@@ -148,7 +172,7 @@ function LedgerManagement({ showHeader = false }) {
         
         // Get transactions for this specific account (match by accountId only)
         const accountTxns = validTxns.filter(t => t.accountId === accountId);
-        
+
         // Calculate income and expenses
         const accountIncome = accountTxns
           .filter(t => t.type === 'income')
@@ -162,9 +186,15 @@ function LedgerManagement({ showHeader = false }) {
         if (isCreditCard) {
           // For credit cards: Opening (debt) + Expenses (purchases) - Income (payments)
           closingBal = accountOpening + accountExpenses - accountIncome;
+          console.log(`💳 ${account.accountName} (Credit Card):`);
+          console.log(`   Opening: ${accountOpening}, Income (Payments): ${accountIncome}, Expenses (Purchases): ${accountExpenses}`);
+          console.log(`   Closing = ${accountOpening} + ${accountExpenses} - ${accountIncome} = ${closingBal}`);
         } else {
           // For bank accounts: Opening + Income - Expenses
           closingBal = accountOpening + accountIncome - accountExpenses;
+          console.log(`🏦 ${account.accountName} (Bank Account):`);
+          console.log(`   Opening: ${accountOpening}, Income: ${accountIncome}, Expenses: ${accountExpenses}`);
+          console.log(`   Closing = ${accountOpening} + ${accountIncome} - ${accountExpenses} = ${closingBal}`);
         }
         
         accountClosingBalances[accountId] = closingBal;
@@ -174,6 +204,11 @@ function LedgerManagement({ showHeader = false }) {
     const runningOutflowBankAccount = upiExpenses + bankTransferExpenses;
     const indicativeClosingWithCC = openingBal + totalIncome - totalExpenses;
     const indicativeClosingWithoutCC = openingBal + totalIncome - runningOutflowBankAccount;
+    
+    console.log('📈 Final Ledger Metrics:');
+    console.log('   accountClosingBalances:', accountClosingBalances);
+    console.log('   indicativeClosingWithCC:', indicativeClosingWithCC);
+    console.log('   indicativeClosingWithoutCC:', indicativeClosingWithoutCC);
     
     setLedgerMetrics({
       totalIncome,
@@ -324,22 +359,38 @@ function LedgerManagement({ showHeader = false }) {
     return `${month}-${year}`;
   };
 
+  const handleRefresh = async () => {
+    setLoading(true);
+    try {
+      await fetchLedgers();
+      await fetchBankAccounts();
+      await fetchCreditCards();
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleStartLedger = async () => {
     setNewLedgerName(generateLedgerName());
     
     // Fetch the most recent closed ledger to get closing balances
+    // NOTE: Sort in frontend to avoid requiring a composite Firestore index
     try {
       const closedLedgersQuery = query(
         collection(db, 'ledgers'),
         where('userId', '==', currentUser.uid),
-        where('status', '==', 'closed'),
-        orderBy('closingDate', 'desc'),
-        limit(1)
+        where('status', '==', 'closed')
       );
       const snapshot = await getDocs(closedLedgersQuery);
       
       if (!snapshot.empty) {
-        const lastClosedLedger = snapshot.docs[0].data();
+        // Sort by closingDate descending in JS (avoids composite index requirement)
+        const sortedDocs = snapshot.docs.sort((a, b) => {
+          const dateA = a.data().closingDate?.toDate() || new Date(0);
+          const dateB = b.data().closingDate?.toDate() || new Date(0);
+          return dateB - dateA;
+        });
+        const lastClosedLedger = sortedDocs[0].data();
         
         // If previous ledger had account balances, use closing balances as opening balances
         if (lastClosedLedger.accountBalances && lastClosedLedger.accountBalances.length > 0) {
@@ -347,7 +398,7 @@ function LedgerManagement({ showHeader = false }) {
             accountId: acc.accountId,
             accountName: acc.accountName,
             accountType: acc.accountType,
-            openingBalance: acc.closingBalance || '0'
+            openingBalance: (parseFloat(acc.closingBalance) || 0).toFixed(2)
           }));
           setAccountBalances(previousBalances);
         } else {
@@ -475,7 +526,9 @@ function LedgerManagement({ showHeader = false }) {
       // Update account balances with calculated closing balances
       const updatedAccountBalances = openLedger.accountBalances?.map(acc => ({
         ...acc,
-        closingBalance: ledgerMetrics?.accountClosingBalances?.[acc.accountId] || acc.openingBalance || 0
+        closingBalance: ledgerMetrics?.accountClosingBalances?.[acc.accountId] !== undefined 
+          ? ledgerMetrics.accountClosingBalances[acc.accountId]
+          : (acc.openingBalance || 0)
       })) || [];
       
       // Calculate total closing balance from account balances
@@ -585,757 +638,585 @@ function LedgerManagement({ showHeader = false }) {
 
   if (loading) {
     return (
-      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', p: 4,
+        minHeight: showHeader ? '100vh' : 'auto', bgcolor: showHeader ? '#f8f9fb' : 'transparent' }}>
         <CircularProgress size={32} />
       </Box>
     );
   }
 
-  return (
+  // ── Shared account selector options ──
+  const AccountOptions = () => (
+    <>
+      <MenuItem value=""><em>Select…</em></MenuItem>
+      {bankAccounts.length > 0 && [
+        <MenuItem key="bank-hdr" disabled sx={{ fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary' }}>BANK ACCOUNTS</MenuItem>,
+        ...bankAccounts.map(acc => <MenuItem key={acc.id} value={acc.id}>{acc.accountNickName}</MenuItem>)
+      ]}
+      {creditCards.length > 0 && [
+        <MenuItem key="cc-hdr" disabled sx={{ fontWeight: 600, fontSize: '0.7rem', color: 'text.secondary', mt: 1 }}>CREDIT CARDS</MenuItem>,
+        ...creditCards.map(card => <MenuItem key={card.id} value={card.id}>{card.nickName}</MenuItem>)
+      ]}
+    </>
+  );
+
+  // ── Reusable card section header ──
+  const SectionHeader = ({ title, subtitle, action }) => (
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', px: 2, py: 1.25, bgcolor: '#fafafa', borderBottom: '1px solid #f0f0f0' }}>
+      <Box>
+        <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{title}</Typography>
+        {subtitle && <Typography sx={{ fontSize: '0.62rem', color: '#9ca3af', lineHeight: 1.2 }}>{subtitle}</Typography>}
+      </Box>
+      {action}
+    </Box>
+  );
+
+  const mainContent = (
     <Box>
-      {/* Header - Only show when used as standalone page */}
-      {showHeader && (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          <BookIcon sx={{ fontSize: 24, color: '#42a5f5' }} />
-          <Typography variant="h6" fontWeight="700" sx={{ fontSize: '1.1rem' }}>
-            Ledger Management
-          </Typography>
-        </Box>
-      )}
-      
-      {/* Subheading for when used within Admin page */}
-      {!showHeader && (
-        <Typography variant="h6" fontWeight="600" gutterBottom sx={{ mb: 2, fontSize: '1rem' }}>
-          Ledger Management
-        </Typography>
-      )}
-
-      {/* Current Open Ledger */}
-      <Paper elevation={2} sx={{ p: 1.5, mb: 2, borderRadius: 1, bgcolor: '#ffffff' }}>
-        {openLedger ? (
-          <Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1.5, flexWrap: 'wrap' }}>
-              <Chip
-                icon={<BookIcon />}
-                label={openLedger.name}
-                sx={{ fontSize: '0.875rem', fontWeight: 600, px: 1.5, py: 2, bgcolor: '#42a5f5', color: '#fff', '& .MuiChip-icon': { color: '#fff' } }}
-              />
-              <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
-                Started: {openLedger.startDate?.toDate().toLocaleDateString()}
+      {/* ── Open Ledger / No Ledger ── */}
+      {openLedger ? (
+        <Box>
+          {/* Ledger hero card */}
+          <Box sx={{
+            background: 'linear-gradient(135deg, #415846 0%, #568562 50%, #e8eaef 100%)',
+            border: '1px solid #b5b7bb',
+            borderRadius: '16px', p: '16px 18px', mb: 2,
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+            position: 'relative', overflow: 'hidden'
+          }}>
+            <Box sx={{ position: 'absolute', top: -20, right: -20, width: 100, height: 100, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.6)' }} />
+            <Box sx={{ position: 'absolute', bottom: -28, right: 44, width: 70, height: 70, borderRadius: '50%', bgcolor: 'rgba(255,255,255,0.4)' }} />
+            <Box sx={{ position: 'relative' }}>
+              <Typography sx={{ fontSize: '0.65rem', color: '#c3e918', fontWeight: 600, letterSpacing: '0.8px', mb: '4px', textTransform: 'uppercase' }}>ACTIVE LEDGER</Typography>
+              <Typography fontWeight="800" sx={{ fontSize: '1.15rem', color: '#111827', letterSpacing: '-0.3px' }}>{openLedger.name}</Typography>
+              <Typography sx={{ fontSize: '0.72rem', color: 'rgba(0,0,0,0.55)', mt: '4px' }}>
+                Started {openLedger.startDate?.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
               </Typography>
             </Box>
-            
-            {/* Editable Fields */}
-
-            {/* Account Closing Balances */}
-            <Typography variant="subtitle2" sx={{ mt: 1.5, mb: 0.5, fontWeight: 600, fontSize: '0.9rem' }}>
-              Account Closing Balances
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, fontSize: '0.8rem' }}>
-              Auto-calculated based on transactions. Only transactions with linked accounts are included.
-            </Typography>
-
-            {accountBalances.filter(acc => acc.accountId).map((account, index) => {
-              const closingBalance = ledgerMetrics?.accountClosingBalances?.[account.accountId] || parseFloat(account.openingBalance) || 0;
-              return (
-                <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
-                  <TextField
-                    sx={{ width: 280 }}
-                    label="Account/Card"
-                    size="small"
-                    value={account.accountName || 'Unknown Account'}
-                    disabled
-                    InputProps={{
-                      readOnly: true,
-                    }}
-                  />
-
-                  <TextField
-                    sx={{ flex: 1, minWidth: 200 }}
-                    label="Closing Balance"
-                    type="number"
-                    size="small"
-                    value={closingBalance.toFixed(2)}
-                    disabled
-                    InputProps={{
-                      readOnly: true,
-                    }}
-                    inputProps={{ step: '0.01' }}
-                  />
-                </Box>
-              );
-            })}
-
-            {accountBalances.filter(acc => acc.accountId).length > 0 && ledgerMetrics?.accountClosingBalances && (
-              <Alert severity="success" sx={{ mb: 1.5, py: 0.5, fontSize: '0.85rem' }}>
-                <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>
-                  Total Closing Balance: ₹{Object.values(ledgerMetrics.accountClosingBalances)
-                    .reduce((sum, bal) => sum + bal, 0)
-                    .toFixed(2)}
-                </Typography>
-                <Typography variant="caption" display="block" sx={{ fontSize: '0.7rem' }}>
-                  Sum of all account closing balances
-                </Typography>
-              </Alert>
-            )}
-
-            <Divider sx={{ my: 2 }} />
-
-            {/* Account Opening Balances */}
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1.5, mb: 0.5 }}>
-              <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.9rem' }}>
-                Account Opening Balances
-              </Typography>
-              <IconButton
-                size="small"
-                color={openingEditable ? 'primary' : 'default'}
-                onClick={() => setOpeningEditable(!openingEditable)}
-                title={openingEditable ? 'Lock editing' : 'Edit opening balances'}
-              >
-                <EditIcon fontSize="small" />
-              </IconButton>
-            </Box>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, fontSize: '0.8rem' }}>
-              {openingEditable ? 'Edit mode: modify accounts and balances below.' : 'Read-only. Click the edit button to make changes.'}
-            </Typography>
-
-            <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
-              <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Opening Date"
-                  type="date"
-                  value={editableOpeningDate}
-                  onChange={(e) => setEditableOpeningDate(e.target.value)}
-                  InputLabelProps={{ shrink: true }}
-                  size="small"
-                  disabled={!openingEditable}
-                />
-              </Grid>
-            </Grid>
-
-            {accountBalances.map((account, index) => (
-              <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
-                <FormControl sx={{ width: 280 }} size="small" disabled={!openingEditable}>
-                  <InputLabel>Account/Card</InputLabel>
-                  <Select
-                    value={account.accountId}
-                    label="Account/Card"
-                    onChange={(e) => handleAccountChange(index, 'accountId', e.target.value)}
-                  >
-                    <MenuItem value="">
-                      <em>Select...</em>
-                    </MenuItem>
-                    {bankAccounts.length > 0 && [
-                      <MenuItem key="bank-header" disabled sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>
-                        BANK ACCOUNTS
-                      </MenuItem>,
-                      ...bankAccounts.map(acc => (
-                        <MenuItem key={acc.id} value={acc.id}>
-                          {acc.accountNickName}
-                        </MenuItem>
-                      ))
-                    ]}
-                    {creditCards.length > 0 && [
-                      <MenuItem key="cc-header" disabled sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary', mt: 1 }}>
-                        CREDIT CARDS
-                      </MenuItem>,
-                      ...creditCards.map(card => (
-                        <MenuItem key={card.id} value={card.id}>
-                          {card.nickName}
-                        </MenuItem>
-                      ))
-                    ]}
-                  </Select>
-                </FormControl>
-
-                <TextField
-                  sx={{ flex: 1, minWidth: 200 }}
-                  label="Opening Balance"
-                  type="number"
-                  size="small"
-                  value={account.openingBalance}
-                  onChange={(e) => handleAccountChange(index, 'openingBalance', e.target.value)}
-                  placeholder={account.accountType === 'creditCard' ? 'Negative for debt' : '0.00'}
-                  inputProps={{ step: '0.01' }}
-                  disabled={!openingEditable}
-                />
-
-                <IconButton
-                  onClick={() => handleRemoveAccountRow(index)}
-                  disabled={accountBalances.length === 1 || !openingEditable}
-                  color="error"
-                  size="small"
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </Box>
-            ))}
-
-            {accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').length > 0 && (
-              <Alert severity="info" sx={{ mb: 1.5, py: 0.5, fontSize: '0.85rem' }}>
-                <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>
-                  Total Opening Balance: ₹{accountBalances
-                    .filter(acc => acc.accountId && acc.openingBalance !== '')
-                    .reduce((sum, acc) => {
-                      const balance = parseFloat(acc.openingBalance) || 0;
-                      return acc.accountType === 'creditCard' ? sum - Math.abs(balance) : sum + balance;
-                    }, 0)
-                    .toFixed(2)}
-                </Typography>
-                <Typography variant="caption" display="block" sx={{ fontSize: '0.7rem' }}>
-                  (Bank Accounts - Credit Card Debt)
-                </Typography>
-              </Alert>
-            )}
-
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 1.5, mb: 2 }}>
-              {openingEditable && (
-                <IconButton
-                  onClick={handleAddAccountRow}
-                  color="primary"
-                  size="small"
-                  sx={{ 
-                    border: '1px solid',
-                    borderColor: 'primary.main',
-                    borderRadius: 1
-                  }}
-                >
-                  <AddIcon />
-                </IconButton>
-              )}
-              <Button
-                variant="contained"
-                size="small"
-                onClick={handleUpdateOpeningDetails}
-                disabled={!openingEditable || !editableOpeningDate || accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').length === 0}
-                sx={{ minWidth: 140, color: '#ffffff !important' }}
-              >
-                Save Open Ledger
-              </Button>
-            </Box>
-
-            {/* Expandable Calculated Metrics */}
-            <Box sx={{ mb: 1.5 }}>
-              <Button
-                fullWidth
-                variant="outlined"
-                size="small"
-                endIcon={detailsExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                onClick={() => setDetailsExpanded(!detailsExpanded)}
-                sx={{ justifyContent: 'space-between', textTransform: 'none', fontSize: '0.875rem' }}
-              >
-                View Calculated Metrics
-              </Button>
-              <Collapse in={detailsExpanded}>
-                {ledgerMetrics && (
-                  <Paper elevation={0} sx={{ mt: 1.5, p: 1.5, bgcolor: '#fafafa', borderRadius: 1 }}>
-                    <Grid container spacing={1}>
-                      <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>As of Date Income</Typography>
-                        <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>{formatINR(ledgerMetrics.totalIncome)}</Typography>
-                      </Grid>
-                      <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>As of Date Investment</Typography>
-                        <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>{formatINR(ledgerMetrics.totalInvestment)}</Typography>
-                      </Grid>
-                      <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>As of Date Expenses</Typography>
-                        <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>{formatINR(ledgerMetrics.totalExpenses)}</Typography>
-                      </Grid>
-                      <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Outflow (Bank Account)</Typography>
-                        <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>{formatINR(ledgerMetrics.runningOutflowBankAccount)}</Typography>
-                        <Typography variant="caption" color="text.secondary" display="block" sx={{ fontSize: '0.65rem' }}>UPI + Bank Transfer</Typography>
-                      </Grid>
-                      <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Outflow (Credit Card)</Typography>
-                        <Typography variant="body2" fontWeight="600" sx={{ fontSize: '0.85rem' }}>{formatINR(ledgerMetrics.creditCardExpenses)}</Typography>
-                      </Grid>
-                      <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Indicative Closing (with CC)</Typography>
-                        <Typography variant="body2" fontWeight="600" color="primary.main" sx={{ fontSize: '0.85rem' }}>
-                          {formatINR(ledgerMetrics.indicativeClosingWithCC)}
-                        </Typography>
-                      </Grid>
-                      <Grid item xs={12}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Indicative Closing (without CC)</Typography>
-                        <Typography variant="body2" fontWeight="600" color="secondary.main" sx={{ fontSize: '0.85rem' }}>
-                          {formatINR(ledgerMetrics.indicativeClosingWithoutCC)}
-                        </Typography>
-                      </Grid>
-                    </Grid>
-                  </Paper>
-                )}
-              </Collapse>
-            </Box>
-            
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 1.5 }}>
-              <Button
-                variant="contained"
-                color="error"
-                size="small"
-                startIcon={<LockIcon fontSize="small" />}
-                onClick={handleCloseLedger}
-                sx={{ minWidth: 140 }}
-              >
-                Close Ledger
-              </Button>
-            </Box>
+            <Chip label="Open" size="small" sx={{ bgcolor: '#22c55e', color: '#fff', fontWeight: 700, fontSize: '0.7rem', position: 'relative' }} />
           </Box>
-        ) : (
-          <Box>
-            <Alert severity="warning" sx={{ mb: 1.5, py: 0.5, fontSize: '0.85rem' }}>
-              No open ledger. Transactions cannot be entered without an active ledger.
-            </Alert>
-            <Button
-              variant="contained"
-              color="primary"
-              size="small"
-              startIcon={<AddIcon fontSize="small" />}
-              onClick={handleStartLedger}
-              sx={{ textTransform: 'none', fontSize: '0.875rem' }}
-            >
-              Start New Ledger
-            </Button>
-          </Box>
-        )}
-      </Paper>
 
-      {/* Ledger History */}
-      <Paper elevation={2} sx={{ p: 1.5, borderRadius: 1, bgcolor: '#ffffff' }}>
-        <Typography variant="subtitle1" fontWeight="600" gutterBottom sx={{ fontSize: '0.95rem' }}>
-          Ledger History
-        </Typography>
-        
-        {allLedgers.length === 0 ? (
-          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.85rem' }}>
-            No ledgers found
-          </Typography>
-        ) : (
-          <List sx={{ py: 0 }}>
-            {allLedgers.map((ledger) => (
-              <React.Fragment key={ledger.id}>
-                <ListItem
-                  sx={{ py: 1.5, px: 1, flexDirection: 'column', alignItems: 'stretch' }}
-                  secondaryAction={
-                    ledger.status === 'closed' && (
-                      <IconButton size="small" edge="end" onClick={() => handleViewLedgerDetails(ledger)}>
-                        <VisibilityIcon fontSize="small" />
-                      </IconButton>
-                    )
-                  }
-                >
-                  <ListItemText
-                    primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        <Typography fontWeight="600" sx={{ fontSize: '0.9rem' }}>{ledger.name}</Typography>
-                        <Chip 
-                          label={ledger.status} 
-                          size="small" 
-                          color={ledger.status === 'open' ? 'success' : 'default'}
-                          sx={{ height: '20px', fontSize: '0.7rem' }}
-                        />
+          {/* Account Closing Balances */}
+          <Box sx={{ bgcolor: '#fff', borderRadius: '14px', border: '1px solid #e8ecf0', mb: 2, overflow: 'hidden' }}>
+            <SectionHeader title="Closing Balances" subtitle="Auto-calculated from transactions" />
+            <Box sx={{ p: 1.5 }}>
+              {accountBalances.filter(acc => acc.accountId).map((account, index) => {
+                const closingBal = ledgerMetrics?.accountClosingBalances?.[account.accountId] !== undefined
+                  ? ledgerMetrics.accountClosingBalances[account.accountId]
+                  : (parseFloat(account.openingBalance) || 0);
+                const isCreditCard = account.accountType === 'creditCard';
+                const filtered = accountBalances.filter(acc => acc.accountId);
+                return (
+                  <Box key={index} sx={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    py: '10px', borderBottom: index < filtered.length - 1 ? '1px solid #f5f5f5' : 'none'
+                  }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Box sx={{ width: 34, height: 34, borderRadius: '9px', bgcolor: isCreditCard ? '#fff7ed' : '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Typography sx={{ fontSize: '0.85rem' }}>{isCreditCard ? '💳' : '🏦'}</Typography>
                       </Box>
-                    }
-                    secondary={
                       <Box>
-                        <Typography variant="body2" component="span" sx={{ fontSize: '0.8rem' }}>
-                          Started: {ledger.startDate?.toDate().toLocaleDateString()}
-                        </Typography>
-                        {ledger.openingBalance !== undefined && (
-                          <Typography variant="body2" component="span" sx={{ ml: 1.5, fontSize: '0.8rem' }}>
-                            Opening: {formatINR(ledger.openingBalance)}
-                          </Typography>
-                        )}
-                        {ledger.closingDate && (
-                          <>
-                            <Typography variant="body2" component="span" sx={{ ml: 1.5, fontSize: '0.8rem' }}>
-                              Closed: {ledger.closingDate?.toDate().toLocaleDateString()}
-                            </Typography>
-                            {ledger.closingBalance !== undefined && (
-                              <Typography variant="body2" component="span" sx={{ ml: 1.5, fontSize: '0.8rem' }}>
-                                Closing: {formatINR(ledger.closingBalance)}
-                              </Typography>
-                            )}
-                          </>
-                        )}
+                        <Typography sx={{ fontSize: '0.83rem', fontWeight: 600, color: '#111827' }}>{account.accountName}</Typography>
+                        <Typography sx={{ fontSize: '0.62rem', color: '#9ca3af' }}>{isCreditCard ? 'Credit Card' : 'Bank Account'}</Typography>
                       </Box>
-                    }
-                  />
-                  {/* Account-wise Opening & Closing Balances */}
-                  {ledger.accountBalances && ledger.accountBalances.length > 0 && (
-                    <Box sx={{ mt: 1, ml: 1, mr: 5 }}>
-                      <Table size="small" sx={{ '& td, & th': { py: 0.3, px: 0.5, fontSize: '0.75rem', border: 'none' } }}>
-                        <TableBody>
-                          <TableRow sx={{ bgcolor: '#f5f5f5' }}>
-                            <TableCell sx={{ fontWeight: 600 }}>Account</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 600 }}>Opening</TableCell>
-                            <TableCell align="right" sx={{ fontWeight: 600 }}>Closing</TableCell>
-                          </TableRow>
-                          {ledger.accountBalances.filter(acc => acc.accountId).map((acc, idx) => (
-                            <TableRow key={idx}>
-                              <TableCell>{acc.accountName || 'Unknown'}</TableCell>
-                              <TableCell align="right">{formatINR(parseFloat(acc.openingBalance) || 0)}</TableCell>
-                              <TableCell align="right">
-                                {acc.closingBalance !== undefined ? formatINR(parseFloat(acc.closingBalance) || 0) : '—'}
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
+                    </Box>
+                    <Typography fontWeight="700" sx={{ fontSize: '0.92rem', color: isCreditCard ? (closingBal > 0 ? '#dc2626' : '#16a34a') : (closingBal >= 0 ? '#16a34a' : '#dc2626') }}>
+                      {maskBalance(`₹${Math.abs(closingBal).toFixed(2)}`)}
+                    </Typography>
+                  </Box>
+                );
+              })}
+              {accountBalances.filter(acc => acc.accountId).length > 0 && ledgerMetrics?.accountClosingBalances && (
+                <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1.5px solid #e8ecf0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#374151' }}>Total Closing</Typography>
+                  <Typography fontWeight="800" sx={{ fontSize: '1rem', color: '#1d4ed8' }}>
+                    {maskBalance(`₹${Object.values(ledgerMetrics.accountClosingBalances).reduce((s, b) => s + b, 0).toFixed(2)}`)}
+                  </Typography>
+                </Box>
+              )}
+            </Box>
+          </Box>
+
+          {/* Account Opening Balances */}
+          <Box sx={{ bgcolor: '#fff', borderRadius: '14px', border: '1px solid #e8ecf0', mb: 2, overflow: 'hidden' }}>
+            <SectionHeader
+              title="Opening Balances"
+              subtitle={openingEditable ? 'Edit mode active' : 'Read-only — click ✏ to edit'}
+              action={
+                <IconButton size="small" onClick={() => setOpeningEditable(!openingEditable)}
+                  sx={{ color: openingEditable ? '#1d4ed8' : '#9ca3af', p: '5px' }}>
+                  <EditIcon sx={{ fontSize: 16 }} />
+                </IconButton>
+              }
+            />
+            <Box sx={{ p: 1.5 }}>
+              {!openingEditable ? (
+                /* ── Read-only: same row style as Closing Balances ── */
+                <>
+                  {accountBalances.filter(acc => acc.accountId).map((account, index) => {
+                    const isCreditCard = account.accountType === 'creditCard';
+                    const filtered = accountBalances.filter(acc => acc.accountId);
+                    return (
+                      <Box key={index} sx={{
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        py: '10px', borderBottom: index < filtered.length - 1 ? '1px solid #f5f5f5' : 'none'
+                      }}>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Box sx={{ width: 34, height: 34, borderRadius: '9px', bgcolor: isCreditCard ? '#fff7ed' : '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Typography sx={{ fontSize: '0.85rem' }}>{isCreditCard ? '💳' : '🏦'}</Typography>
+                          </Box>
+                          <Box>
+                            <Typography sx={{ fontSize: '0.83rem', fontWeight: 600, color: '#111827' }}>{account.accountName || 'Unknown'}</Typography>
+                            <Typography sx={{ fontSize: '0.62rem', color: '#9ca3af' }}>{isCreditCard ? 'Credit Card' : 'Bank Account'}</Typography>
+                          </Box>
+                        </Box>
+                        <Typography fontWeight="700" sx={{ fontSize: '0.92rem', color: '#374151' }}>
+                          {maskBalance(`₹${(parseFloat(account.openingBalance) || 0).toFixed(2)}`)}
+                        </Typography>
+                      </Box>
+                    );
+                  })}
+                  {accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').length > 0 && (
+                    <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1.5px solid #e8ecf0', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#374151' }}>Total Opening</Typography>
+                      <Typography fontWeight="800" sx={{ fontSize: '1rem', color: '#1d4ed8' }}>
+                        {maskBalance(`₹${accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').reduce((sum, acc) => {
+                          const bal = parseFloat(acc.openingBalance) || 0;
+                          return acc.accountType === 'creditCard' ? sum - Math.abs(bal) : sum + bal;
+                        }, 0).toFixed(2)}`)}
+                      </Typography>
                     </Box>
                   )}
-                </ListItem>
-                <Divider />
-              </React.Fragment>
+                </>
+              ) : (
+                /* ── Edit mode: form controls ── */
+                <>
+                  <Grid container spacing={1.5} sx={{ mb: 1.5 }}>
+                    <Grid item xs={12} sm={6}>
+                      <TextField fullWidth label="Opening Date" type="date" value={editableOpeningDate}
+                        onChange={(e) => setEditableOpeningDate(e.target.value)}
+                        InputLabelProps={{ shrink: true }} size="small" />
+                    </Grid>
+                  </Grid>
+                  {accountBalances.map((account, index) => (
+                    <Box key={index} sx={{ display: 'flex', gap: 1, mb: 1.5, alignItems: 'center' }}>
+                      <FormControl sx={{ flex: 2 }} size="small">
+                        <InputLabel>Account / Card</InputLabel>
+                        <Select value={account.accountId} label="Account / Card"
+                          onChange={(e) => handleAccountChange(index, 'accountId', e.target.value)}>
+                          <AccountOptions />
+                        </Select>
+                      </FormControl>
+                      <TextField sx={{ flex: 1 }} label="Opening Balance" type="number" size="small"
+                        value={account.openingBalance}
+                        onChange={(e) => handleAccountChange(index, 'openingBalance', e.target.value)}
+                        placeholder={account.accountType === 'creditCard' ? 'Negative for debt' : '0.00'}
+                        inputProps={{ step: '0.01' }} />
+                      <IconButton onClick={() => handleRemoveAccountRow(index)}
+                        disabled={accountBalances.length === 1} color="error" size="small">
+                        <DeleteIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    </Box>
+                  ))}
+                  {accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').length > 0 && (
+                    <Box sx={{ mt: 0.5, pt: 1.25, borderTop: '1px solid #f0f0f0', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                      <Box>
+                        <Typography sx={{ fontSize: '0.75rem', color: '#6b7280', fontWeight: 500 }}>Total Opening</Typography>
+                        <Typography sx={{ fontSize: '0.62rem', color: '#9ca3af' }}>Banks − CC Debt</Typography>
+                      </Box>
+                      <Typography fontWeight="700" sx={{ fontSize: '0.95rem', color: '#374151' }}>
+                        ₹{accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').reduce((sum, acc) => {
+                          const bal = parseFloat(acc.openingBalance) || 0;
+                          return acc.accountType === 'creditCard' ? sum - Math.abs(bal) : sum + bal;
+                        }, 0).toFixed(2)}
+                      </Typography>
+                    </Box>
+                  )}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mt: 1.5 }}>
+                    <Button size="small" startIcon={<AddIcon sx={{ fontSize: 14 }} />} onClick={handleAddAccountRow}
+                      sx={{ fontSize: '0.72rem', color: '#1d4ed8', textTransform: 'none', p: 0 }}>
+                      Add Account
+                    </Button>
+                    <Button variant="contained" size="small" onClick={handleUpdateOpeningDetails}
+                      disabled={!editableOpeningDate || accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').length === 0}
+                      sx={{ fontSize: '0.75rem', textTransform: 'none', borderRadius: '8px', px: 2 }}>
+                      Save Changes
+                    </Button>
+                  </Box>
+                </>
+              )}
+            </Box>
+          </Box>
+
+          {/* Calculated Metrics (collapsible) */}
+          <Box sx={{ bgcolor: '#fff', borderRadius: '14px', border: '1px solid #e8ecf0', mb: 2, overflow: 'hidden' }}>
+            <Box onClick={() => setDetailsExpanded(!detailsExpanded)} sx={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              px: 2, py: 1.25, bgcolor: '#fafafa', cursor: 'pointer',
+              borderBottom: detailsExpanded ? '1px solid #f0f0f0' : 'none'
+            }}>
+              <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Calculated Metrics
+              </Typography>
+              {detailsExpanded ? <ExpandLessIcon sx={{ fontSize: 18, color: '#9ca3af' }} /> : <ExpandMoreIcon sx={{ fontSize: 18, color: '#9ca3af' }} />}
+            </Box>
+            <Collapse in={detailsExpanded}>
+              {ledgerMetrics && (
+                <Grid container spacing={0} sx={{ p: 0 }}>
+                  {[
+                    { label: 'Income', value: ledgerMetrics.totalIncome, color: '#16a34a' },
+                    { label: 'Investment', value: ledgerMetrics.totalInvestment, color: '#0f766e' },
+                    { label: 'Total Expenses', value: ledgerMetrics.totalExpenses, color: '#dc2626' },
+                    { label: 'UPI Outflow', value: ledgerMetrics.upiExpenses, color: '#b45309' },
+                    { label: 'Bank Transfer', value: ledgerMetrics.bankTransferExpenses, color: '#b45309' },
+                    { label: 'Credit Card', value: ledgerMetrics.creditCardExpenses, color: '#7c3aed' },
+                    { label: 'Closing (with CC)', value: ledgerMetrics.indicativeClosingWithCC, color: '#1d4ed8' },
+                    { label: 'Closing (w/o CC)', value: ledgerMetrics.indicativeClosingWithoutCC, color: '#0891b2' },
+                  ].map(({ label, value, color }, idx) => (
+                    <Grid item xs={6} key={label}>
+                      <Box sx={{ py: '9px', px: 2, borderBottom: idx < 6 ? '1px solid #f5f5f5' : 'none', borderRight: idx % 2 === 0 ? '1px solid #f5f5f5' : 'none' }}>
+                        <Typography sx={{ fontSize: '0.62rem', color: '#9ca3af', mb: '2px' }}>{label}</Typography>
+                        <Typography fontWeight="700" sx={{ fontSize: '0.88rem', color }}>{formatINR(value)}</Typography>
+                      </Box>
+                    </Grid>
+                  ))}
+                </Grid>
+              )}
+            </Collapse>
+          </Box>
+
+          {/* Close Ledger */}
+          <Button fullWidth variant="contained" color="error" startIcon={<LockIcon />} onClick={handleCloseLedger}
+            sx={{ borderRadius: '12px', py: 1.25, fontWeight: 700, textTransform: 'none', fontSize: '0.9rem', mb: 2 }}>
+            Close This Ledger
+          </Button>
+        </Box>
+      ) : (
+        /* No active ledger */
+        <Box sx={{ textAlign: 'center', bgcolor: '#fff', borderRadius: '16px', border: '1px solid #e8ecf0', p: '28px 20px', mb: 2 }}>
+          <BookIcon sx={{ fontSize: 52, color: '#d1d5db', mb: 1.5 }} />
+          <Typography fontWeight="800" sx={{ fontSize: '1rem', color: '#374151', mb: '6px' }}>No Active Ledger</Typography>
+          <Typography sx={{ fontSize: '0.82rem', color: '#9ca3af', mb: 2.5, maxWidth: 280, mx: 'auto' }}>
+            Transactions cannot be entered without an active ledger.
+          </Typography>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={handleStartLedger}
+            sx={{ borderRadius: '10px', textTransform: 'none', fontWeight: 700, px: 3 }}>
+            Start New Ledger
+          </Button>
+        </Box>
+      )}
+
+      {/* ── Ledger History ── */}
+      <Box sx={{ bgcolor: '#fff', borderRadius: '14px', border: '1px solid #e8ecf0', overflow: 'hidden' }}>
+        <SectionHeader title="Ledger History" subtitle={`${allLedgers.length} ledger${allLedgers.length !== 1 ? 's' : ''}`} />
+        {allLedgers.length === 0 ? (
+          <Box sx={{ textAlign: 'center', py: 4 }}>
+            <Typography sx={{ fontSize: '0.85rem', color: '#9ca3af' }}>No ledgers found</Typography>
+          </Box>
+        ) : (
+          <Box>
+            {allLedgers.map((ledger, idx) => (
+              <Box key={ledger.id} sx={{
+                px: 2, py: 1.5,
+                borderBottom: idx < allLedgers.length - 1 ? '1px solid #f5f5f5' : 'none',
+                '&:hover': { bgcolor: '#fafafa' }, transition: 'background 0.1s'
+              }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <Box sx={{ flex: 1 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, mb: '4px' }}>
+                      <Typography fontWeight="700" sx={{ fontSize: '0.9rem', color: '#111827' }}>{ledger.name}</Typography>
+                      <Chip label={ledger.status === 'open' ? 'Open' : 'Closed'} size="small"
+                        sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700,
+                          bgcolor: ledger.status === 'open' ? '#dcfce7' : '#f3f4f6',
+                          color: ledger.status === 'open' ? '#16a34a' : '#6b7280' }} />
+                    </Box>
+                    <Typography sx={{ fontSize: '0.72rem', color: '#6b7280' }}>
+                      {ledger.startDate?.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      {ledger.closingDate && ` → ${ledger.closingDate.toDate().toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}`}
+                    </Typography>
+                  </Box>
+                  <Box sx={{ textAlign: 'right', ml: 1 }}>
+                    {ledger.openingBalance != null && (
+                      <Typography sx={{ fontSize: '0.7rem', color: '#9ca3af' }}>
+                        Open: <span style={{ color: '#374151', fontWeight: 600 }}>{formatINR(ledger.openingBalance)}</span>
+                      </Typography>
+                    )}
+                    {ledger.closingBalance != null && (
+                      <Typography sx={{ fontSize: '0.7rem', color: '#9ca3af' }}>
+                        Close: <span style={{ color: '#16a34a', fontWeight: 600 }}>{formatINR(ledger.closingBalance)}</span>
+                      </Typography>
+                    )}
+                  </Box>
+                  {ledger.status === 'closed' && (
+                    <IconButton size="small" onClick={() => handleViewLedgerDetails(ledger)}
+                      sx={{ color: '#9ca3af', ml: 0.5, p: '4px', '&:hover': { color: '#1d4ed8' } }}>
+                      <VisibilityIcon sx={{ fontSize: 16 }} />
+                    </IconButton>
+                  )}
+                </Box>
+                {/* Account-wise mini rows */}
+                {ledger.accountBalances && ledger.accountBalances.filter(acc => acc.accountId).length > 0 && (
+                  <Box sx={{ mt: 1, bgcolor: '#f9fafb', borderRadius: '8px', p: '8px 10px' }}>
+                    {ledger.accountBalances.filter(acc => acc.accountId).map((acc, i) => (
+                      <Box key={i} sx={{ display: 'flex', justifyContent: 'space-between', py: '3px' }}>
+                        <Typography sx={{ fontSize: '0.68rem', color: '#6b7280' }}>{acc.accountName || 'Unknown'}</Typography>
+                        <Box sx={{ display: 'flex', gap: 2 }}>
+                          <Typography sx={{ fontSize: '0.68rem', color: '#9ca3af' }}>{formatINR(parseFloat(acc.openingBalance) || 0)}</Typography>
+                          {acc.closingBalance !== undefined && (
+                            <Typography sx={{ fontSize: '0.68rem', fontWeight: 600, color: '#374151' }}>
+                              → {formatINR(parseFloat(acc.closingBalance) || 0)}
+                            </Typography>
+                          )}
+                        </Box>
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
             ))}
-          </List>
+          </Box>
         )}
-      </Paper>
+      </Box>
+    </Box>
+  );
 
-      {/* Start Ledger Dialog */}
-      <Dialog open={startDialogOpen} onClose={() => setStartDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Start New Ledger</DialogTitle>
+  return (
+    <Box sx={{ minHeight: showHeader ? '100vh' : 'auto', bgcolor: showHeader ? '#f8f9fb' : 'transparent', pb: showHeader ? 10 : 0 }}>
+      {showHeader && (
+        /* Sticky header for standalone /ledger page */
+        <Box sx={{
+          position: 'sticky', top: 0, zIndex: 10,
+          bgcolor: '#fff', borderBottom: '1px solid #e8ecf0',
+          px: 2, py: 1.25,
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
+        }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <BookIcon sx={{ fontSize: 20, color: '#1d4ed8' }} />
+            <Typography fontWeight="800" sx={{ fontSize: '1rem', letterSpacing: '-0.2px', color: '#1a1a2e' }}>Ledger</Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+            <IconButton size="small" onClick={() => setShowBalances(!showBalances)}
+              sx={{ color: showBalances ? '#1d4ed8' : '#9ca3af' }}>
+              {showBalances ? <VisibilityIcon sx={{ fontSize: 18 }} /> : <VisibilityOffIcon sx={{ fontSize: 18 }} />}
+            </IconButton>
+            <IconButton size="small" onClick={handleRefresh} disabled={loading}
+              sx={{ color: '#9ca3af', '&:hover': { color: '#374151' } }}>
+              <RefreshIcon sx={{ fontSize: 18 }} />
+            </IconButton>
+          </Box>
+        </Box>
+      )}
+
+      {!showHeader && (
+        /* Compact header when embedded in Admin page */
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Typography fontWeight="700" sx={{ fontSize: '0.95rem', color: '#111827' }}>Ledger Management</Typography>
+          <Box sx={{ display: 'flex', gap: 0.5 }}>
+            <IconButton size="small" onClick={() => setShowBalances(!showBalances)}
+              sx={{ color: showBalances ? '#1d4ed8' : '#9ca3af' }}>
+              {showBalances ? <VisibilityIcon sx={{ fontSize: 16 }} /> : <VisibilityOffIcon sx={{ fontSize: 16 }} />}
+            </IconButton>
+            <IconButton size="small" onClick={handleRefresh} disabled={loading} sx={{ color: 'text.secondary' }}>
+              <RefreshIcon sx={{ fontSize: 16 }} />
+            </IconButton>
+          </Box>
+        </Box>
+      )}
+
+      <Box sx={{ px: showHeader ? 2 : 0, pt: showHeader ? 2 : 0 }}>
+        {mainContent}
+      </Box>
+
+      {/* ── Start Ledger Dialog ── */}
+      <Dialog open={startDialogOpen} onClose={() => setStartDialogOpen(false)} maxWidth="md" fullWidth
+        PaperProps={{ sx: { borderRadius: '16px' } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Start New Ledger</DialogTitle>
         <DialogContent>
-          <TextField
-            fullWidth
-            label="Ledger Name"
-            value={newLedgerName}
-            onChange={(e) => setNewLedgerName(e.target.value)}
-            placeholder="e.g., January 2024"
-            margin="normal"
-            size="small"
-            autoFocus
-          />
-          <TextField
-            fullWidth
-            label="Opening Date"
-            type="date"
-            value={openingDate}
-            onChange={(e) => setOpeningDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            margin="normal"
-            size="small"
-          />
-
-          <Typography variant="subtitle1" sx={{ mt: 2, mb: 1.5, fontWeight: 600 }}>
-            Account Opening Balances
+          <TextField fullWidth label="Ledger Name" value={newLedgerName} onChange={(e) => setNewLedgerName(e.target.value)}
+            placeholder="e.g., JUN-26" margin="normal" size="small" autoFocus />
+          <TextField fullWidth label="Opening Date" type="date" value={openingDate}
+            onChange={(e) => setOpeningDate(e.target.value)} InputLabelProps={{ shrink: true }} margin="normal" size="small" />
+          <Typography variant="subtitle2" sx={{ mt: 2, mb: 0.75, fontWeight: 700 }}>Account Opening Balances</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5, fontSize: '0.8rem' }}>
+            Add all accounts and credit cards. Credit cards: enter as negative values (debt).
           </Typography>
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-            Add all accounts and credit cards with their opening balances. 
-            Credit cards should be entered as negative values (debt).
-          </Typography>
-
           {accountBalances.map((account, index) => (
-            <Box key={index} sx={{ display: 'flex', gap: 2, mb: 1.5, alignItems: 'flex-start' }}>
+            <Box key={index} sx={{ display: 'flex', gap: 1.5, mb: 1.5, alignItems: 'flex-start' }}>
               <FormControl sx={{ flex: 2 }} size="small">
-                <InputLabel>Select Account/Card</InputLabel>
-                <Select
-                  value={account.accountId}
-                  label="Select Account/Card"
-                  onChange={(e) => handleAccountChange(index, 'accountId', e.target.value)}
-                >
-                  <MenuItem value="">
-                    <em>Select...</em>
-                  </MenuItem>
-                  {bankAccounts.length > 0 && [
-                    <MenuItem key="bank-header" disabled sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary' }}>
-                      BANK ACCOUNTS
-                    </MenuItem>,
-                    ...bankAccounts.map(acc => (
-                      <MenuItem key={acc.id} value={acc.id}>
-                        {acc.accountNickName}
-                      </MenuItem>
-                    ))
-                  ]}
-                  {creditCards.length > 0 && [
-                    <MenuItem key="cc-header" disabled sx={{ fontWeight: 600, fontSize: '0.75rem', color: 'text.secondary', mt: 1 }}>
-                      CREDIT CARDS
-                    </MenuItem>,
-                    ...creditCards.map(card => (
-                      <MenuItem key={card.id} value={card.id}>
-                        {card.nickName}
-                      </MenuItem>
-                    ))
-                  ]}
+                <InputLabel>Account / Card</InputLabel>
+                <Select value={account.accountId} label="Account / Card"
+                  onChange={(e) => handleAccountChange(index, 'accountId', e.target.value)}>
+                  <AccountOptions />
                 </Select>
               </FormControl>
-
-              <TextField
-                sx={{ flex: 1 }}
-                label="Opening Balance"
-                type="number"
-                value={account.openingBalance}
+              <TextField sx={{ flex: 1 }} label="Opening Balance" type="number" value={account.openingBalance}
                 onChange={(e) => handleAccountChange(index, 'openingBalance', e.target.value)}
-                helperText={account.accountType === 'creditCard' ? 'Enter as negative' : ''}
-                inputProps={{ step: '0.01' }}
-                size="small"
-              />
-
-              <IconButton
-                onClick={() => handleRemoveAccountRow(index)}
-                disabled={accountBalances.length === 1}
-                color="error"
-                sx={{ mt: 1 }}
-              >
-                <DeleteIcon />
+                helperText={account.accountType === 'creditCard' ? 'Enter as negative' : ''} inputProps={{ step: '0.01' }} size="small" />
+              <IconButton onClick={() => handleRemoveAccountRow(index)} disabled={accountBalances.length === 1} color="error" sx={{ mt: 0.5 }}>
+                <DeleteIcon sx={{ fontSize: 18 }} />
               </IconButton>
             </Box>
           ))}
-
-          <Button
-            startIcon={<AddIcon />}
-            onClick={handleAddAccountRow}
-            variant="outlined"
-            size="small"
-            sx={{ mt: 1 }}
-          >
+          <Button startIcon={<AddIcon />} onClick={handleAddAccountRow} variant="outlined" size="small"
+            sx={{ mt: 0.5, textTransform: 'none', borderRadius: '8px' }}>
             Add Another Account
           </Button>
-
           {accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').length > 0 && (
-            <Alert severity="info" sx={{ mt: 3 }}>
-              <Typography variant="body2" fontWeight="600">
-                Total Opening Balance: ₹{accountBalances
-                  .filter(acc => acc.accountId && acc.openingBalance !== '')
-                  .reduce((sum, acc) => {
-                    const balance = parseFloat(acc.openingBalance) || 0;
-                    return acc.accountType === 'creditCard' ? sum - Math.abs(balance) : sum + balance;
-                  }, 0)
-                  .toFixed(2)}
+            <Alert severity="info" sx={{ mt: 2, borderRadius: '10px' }}>
+              <Typography variant="body2" fontWeight="700">
+                Total: ₹{accountBalances.filter(acc => acc.accountId && acc.openingBalance !== '').reduce((sum, acc) => {
+                  const bal = parseFloat(acc.openingBalance) || 0;
+                  return acc.accountType === 'creditCard' ? sum - Math.abs(bal) : sum + bal;
+                }, 0).toFixed(2)}
               </Typography>
-              <Typography variant="caption" display="block">
-                (Bank Accounts - Credit Card Debt)
-              </Typography>
+              <Typography variant="caption">Banks − Credit Card Debt</Typography>
             </Alert>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setStartDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreateLedger} variant="contained" disabled={!newLedgerName.trim()}>
-            Create
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setStartDialogOpen(false)} sx={{ textTransform: 'none' }}>Cancel</Button>
+          <Button onClick={handleCreateLedger} variant="contained" disabled={!newLedgerName.trim()}
+            sx={{ textTransform: 'none', borderRadius: '8px', px: 2.5 }}>
+            Create Ledger
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Close Ledger Dialog */}
-      <Dialog open={closeDialogOpen} onClose={() => setCloseDialogOpen(false)} maxWidth="sm" fullWidth>
-        <DialogTitle>Close Ledger</DialogTitle>
+      {/* ── Close Ledger Dialog ── */}
+      <Dialog open={closeDialogOpen} onClose={() => setCloseDialogOpen(false)} maxWidth="sm" fullWidth
+        PaperProps={{ sx: { borderRadius: '16px' } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>Close Ledger</DialogTitle>
         <DialogContent>
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            Closing a ledger will prevent any further transactions from being added to it.
+          <Alert severity="warning" sx={{ mb: 2, borderRadius: '10px' }}>
+            Closing this ledger will prevent further transactions from being added.
           </Alert>
-
           {ledgerMetrics && (
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" gutterBottom fontWeight="600">
-                Expense Breakdown:
-              </Typography>
-              <Grid container spacing={1} sx={{ mb: 2 }}>
-                <Grid item xs={12}>
-                  <Typography variant="body2">
-                    <strong>UPI Expenses:</strong> {formatINR(ledgerMetrics.upiExpenses)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="body2">
-                    <strong>Bank Transfer Expenses:</strong> {formatINR(ledgerMetrics.bankTransferExpenses)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12}>
-                  <Typography variant="body2">
-                    <strong>Credit Card Expenses:</strong> {formatINR(ledgerMetrics.creditCardExpenses)}
-                  </Typography>
-                </Grid>
-              </Grid>
+            <Box sx={{ bgcolor: '#f9fafb', borderRadius: '10px', p: 1.5, mb: 2 }}>
+              <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', mb: 1, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Expense Breakdown</Typography>
+              {[
+                { label: 'UPI', value: ledgerMetrics.upiExpenses },
+                { label: 'Bank Transfer', value: ledgerMetrics.bankTransferExpenses },
+                { label: 'Credit Card', value: ledgerMetrics.creditCardExpenses },
+              ].map(({ label, value }) => (
+                <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', py: '4px' }}>
+                  <Typography sx={{ fontSize: '0.8rem', color: '#6b7280' }}>{label}</Typography>
+                  <Typography sx={{ fontSize: '0.8rem', fontWeight: 600, color: '#374151' }}>{formatINR(value)}</Typography>
+                </Box>
+              ))}
             </Box>
           )}
-
-          <TextField
-            fullWidth
-            label="Closing Balance"
-            type="number"
-            value={closingBalance}
-            onChange={(e) => setClosingBalance(e.target.value)}
-            margin="normal"
-            size="small"
-            helperText="Pre-filled with calculated balance, editable"
-          />
-          <TextField
-            fullWidth
-            label="Closing Date"
-            type="date"
-            value={closingDate}
-            onChange={(e) => setClosingDate(e.target.value)}
-            InputLabelProps={{ shrink: true }}
-            margin="normal"
-            size="small"
-          />
-
+          <TextField fullWidth label="Closing Balance" type="number" value={closingBalance}
+            onChange={(e) => setClosingBalance(e.target.value)} margin="normal" size="small"
+            helperText="Pre-filled with calculated balance, editable" />
+          <TextField fullWidth label="Closing Date" type="date" value={closingDate}
+            onChange={(e) => setClosingDate(e.target.value)} InputLabelProps={{ shrink: true }} margin="normal" size="small" />
           {recurringExpenses.length > 0 && (
             <Box sx={{ mt: 2 }}>
-              <Typography variant="subtitle2" gutterBottom>
-                Verify Recurring Expenses:
-              </Typography>
+              <Typography variant="subtitle2" gutterBottom fontWeight="700">Verify Recurring Expenses:</Typography>
               <FormGroup>
                 {recurringExpenses.map((expense) => (
-                  <FormControlLabel
-                    key={expense.id}
-                    control={
-                      <Checkbox
-                        checked={checkedExpenses[expense.id] || false}
-                        onChange={(e) => setCheckedExpenses({
-                          ...checkedExpenses,
-                          [expense.id]: e.target.checked
-                        })}
-                      />
-                    }
-                    label={`${expense.name} - ₹${expense.amount}`}
-                  />
+                  <FormControlLabel key={expense.id}
+                    control={<Checkbox checked={checkedExpenses[expense.id] || false}
+                      onChange={(e) => setCheckedExpenses({ ...checkedExpenses, [expense.id]: e.target.checked })} />}
+                    label={`${expense.name} - ₹${expense.amount}`} />
                 ))}
               </FormGroup>
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setCloseDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleConfirmCloseLedger} variant="contained" color="error">
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setCloseDialogOpen(false)} sx={{ textTransform: 'none' }}>Cancel</Button>
+          <Button onClick={handleConfirmCloseLedger} variant="contained" color="error"
+            sx={{ textTransform: 'none', borderRadius: '8px', px: 2.5 }}>
             Confirm Close
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* View Ledger Details Dialog */}
-      <Dialog open={viewDetailsDialogOpen} onClose={() => setViewDetailsDialogOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          {selectedLedger?.name} - Details
-        </DialogTitle>
+      {/* ── View Ledger Details Dialog ── */}
+      <Dialog open={viewDetailsDialogOpen} onClose={() => setViewDetailsDialogOpen(false)} maxWidth="md" fullWidth
+        PaperProps={{ sx: { borderRadius: '16px' } }}>
+        <DialogTitle sx={{ fontWeight: 700 }}>{selectedLedger?.name} — Details</DialogTitle>
         <DialogContent>
           {selectedLedger && (
             <Box>
-              <Grid container spacing={2} sx={{ mb: 3 }}>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" color="text.secondary">Opening Balance</Typography>
-                  <Typography variant="body1" fontWeight="600">
-                    {formatINR(selectedLedger.openingBalance || 0)}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" color="text.secondary">Opening Date</Typography>
-                  <Typography variant="body1" fontWeight="600">
-                    {selectedLedger.startDate?.toDate().toLocaleDateString()}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" color="text.secondary">Closing Balance</Typography>
-                  <Typography variant="body1" fontWeight="600">
-                    {selectedLedger.closingBalance !== undefined ? formatINR(selectedLedger.closingBalance) : 'N/A'}
-                  </Typography>
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <Typography variant="caption" color="text.secondary">Closing Date</Typography>
-                  <Typography variant="body1" fontWeight="600">
-                    {selectedLedger.closingDate ? selectedLedger.closingDate.toDate().toLocaleDateString() : 'N/A'}
-                  </Typography>
-                </Grid>
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                {[
+                  { label: 'Opening Balance', value: formatINR(selectedLedger.openingBalance || 0) },
+                  { label: 'Opening Date', value: selectedLedger.startDate?.toDate().toLocaleDateString('en-IN') },
+                  { label: 'Closing Balance', value: selectedLedger.closingBalance !== undefined ? formatINR(selectedLedger.closingBalance) : 'N/A' },
+                  { label: 'Closing Date', value: selectedLedger.closingDate ? selectedLedger.closingDate.toDate().toLocaleDateString('en-IN') : 'N/A' },
+                ].map(({ label, value }) => (
+                  <Grid item xs={6} key={label}>
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.68rem' }}>{label}</Typography>
+                    <Typography fontWeight="700" sx={{ fontSize: '0.9rem' }}>{value}</Typography>
+                  </Grid>
+                ))}
               </Grid>
-
-              {/* Account-wise Opening & Closing Balances */}
               {selectedLedger.accountBalances && selectedLedger.accountBalances.filter(acc => acc.accountId).length > 0 && (
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="subtitle2" fontWeight="600" sx={{ mb: 1, fontSize: '0.95rem' }}>
-                    Account-wise Balances
-                  </Typography>
-                  <Table size="small" sx={{ border: '1px solid #e0e0e0' }}>
-                    <TableBody>
-                      <TableRow sx={{ bgcolor: '#f5f5f5' }}>
-                        <TableCell sx={{ fontWeight: 700, fontSize: '0.8rem' }}>Account</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.8rem' }}>Opening</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.8rem' }}>Closing</TableCell>
-                      </TableRow>
-                      {selectedLedger.accountBalances.filter(acc => acc.accountId).map((acc, idx) => (
-                        <TableRow key={idx}>
-                          <TableCell sx={{ fontSize: '0.8rem' }}>{acc.accountName || 'Unknown'}</TableCell>
-                          <TableCell align="right" sx={{ fontSize: '0.8rem' }}>{formatINR(parseFloat(acc.openingBalance) || 0)}</TableCell>
-                          <TableCell align="right" sx={{ fontSize: '0.8rem' }}>
-                            {acc.closingBalance !== undefined ? formatINR(parseFloat(acc.closingBalance) || 0) : '—'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                      <TableRow sx={{ bgcolor: '#e3f2fd' }}>
-                        <TableCell sx={{ fontWeight: 700, fontSize: '0.85rem' }}>Total</TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
-                          {formatINR(selectedLedger.accountBalances
-                            .filter(acc => acc.accountId)
-                            .reduce((sum, acc) => sum + (parseFloat(acc.openingBalance) || 0), 0)
-                          )}
-                        </TableCell>
-                        <TableCell align="right" sx={{ fontWeight: 700, fontSize: '0.85rem' }}>
-                          {selectedLedger.accountBalances.some(acc => acc.closingBalance !== undefined)
-                            ? formatINR(selectedLedger.accountBalances
-                                .filter(acc => acc.accountId)
-                                .reduce((sum, acc) => sum + (parseFloat(acc.closingBalance) || 0), 0)
-                              )
-                            : '—'
-                          }
-                        </TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
+                <Box sx={{ mb: 2, bgcolor: '#f9fafb', borderRadius: '12px', overflow: 'hidden' }}>
+                  <Box sx={{ display: 'flex', px: 2, py: '8px', bgcolor: '#f3f4f6', borderBottom: '1px solid #e5e7eb' }}>
+                    <Typography sx={{ flex: 1, fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>Account</Typography>
+                    <Typography sx={{ flex: '0 0 90px', textAlign: 'right', fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>Opening</Typography>
+                    <Typography sx={{ flex: '0 0 90px', textAlign: 'right', fontSize: '0.68rem', fontWeight: 700, color: '#6b7280', textTransform: 'uppercase' }}>Closing</Typography>
+                  </Box>
+                  {selectedLedger.accountBalances.filter(acc => acc.accountId).map((acc, idx) => (
+                    <Box key={idx} sx={{ display: 'flex', px: 2, py: '8px', borderBottom: '1px solid #e5e7eb' }}>
+                      <Typography sx={{ flex: 1, fontSize: '0.8rem', color: '#374151' }}>{acc.accountName || 'Unknown'}</Typography>
+                      <Typography sx={{ flex: '0 0 90px', textAlign: 'right', fontSize: '0.8rem', color: '#374151' }}>{formatINR(parseFloat(acc.openingBalance) || 0)}</Typography>
+                      <Typography sx={{ flex: '0 0 90px', textAlign: 'right', fontSize: '0.8rem', fontWeight: 600, color: '#16a34a' }}>
+                        {acc.closingBalance !== undefined ? formatINR(parseFloat(acc.closingBalance) || 0) : '—'}
+                      </Typography>
+                    </Box>
+                  ))}
+                  <Box sx={{ display: 'flex', px: 2, py: '8px', bgcolor: '#eff6ff' }}>
+                    <Typography sx={{ flex: 1, fontSize: '0.8rem', fontWeight: 700, color: '#1d4ed8' }}>Total</Typography>
+                    <Typography sx={{ flex: '0 0 90px', textAlign: 'right', fontSize: '0.8rem', fontWeight: 700, color: '#1d4ed8' }}>
+                      {formatINR(selectedLedger.accountBalances.filter(acc => acc.accountId).reduce((s, acc) => s + (parseFloat(acc.openingBalance) || 0), 0))}
+                    </Typography>
+                    <Typography sx={{ flex: '0 0 90px', textAlign: 'right', fontSize: '0.8rem', fontWeight: 700, color: '#1d4ed8' }}>
+                      {selectedLedger.accountBalances.some(acc => acc.closingBalance !== undefined)
+                        ? formatINR(selectedLedger.accountBalances.filter(acc => acc.accountId).reduce((s, acc) => s + (parseFloat(acc.closingBalance) || 0), 0))
+                        : '—'}
+                    </Typography>
+                  </Box>
                 </Box>
               )}
-
               {selectedLedger.metrics && (
-                <Box>
-                  <Typography variant="h6" gutterBottom sx={{ mt: 2 }}>
-                    Calculated Metrics
-                  </Typography>
-                  <Table size="small">
-                    <TableBody>
-                      <TableRow>
-                        <TableCell><strong>Total Income</strong></TableCell>
-                        <TableCell align="right">{formatINR(selectedLedger.metrics.totalIncome)}</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell><strong>Total Investment</strong></TableCell>
-                        <TableCell align="right">{formatINR(selectedLedger.metrics.totalInvestment)}</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell><strong>UPI Expenses</strong></TableCell>
-                        <TableCell align="right">{formatINR(selectedLedger.metrics.upiExpenses)}</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell><strong>Bank Transfer Expenses</strong></TableCell>
-                        <TableCell align="right">{formatINR(selectedLedger.metrics.bankTransferExpenses)}</TableCell>
-                      </TableRow>
-                      <TableRow>
-                        <TableCell><strong>Credit Card Expenses</strong></TableCell>
-                        <TableCell align="right">{formatINR(selectedLedger.metrics.creditCardExpenses)}</TableCell>
-                      </TableRow>
-                      <TableRow sx={{ bgcolor: '#f5f7fa' }}>
-                        <TableCell><strong>Running Outflow (Bank Account)</strong></TableCell>
-                        <TableCell align="right">{formatINR(selectedLedger.metrics.runningOutflowBankAccount)}</TableCell>
-                      </TableRow>
-                    </TableBody>
-                  </Table>
+                <Box sx={{ bgcolor: '#f9fafb', borderRadius: '12px', p: 1.5 }}>
+                  <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', mb: 1, textTransform: 'uppercase', letterSpacing: '0.4px' }}>Calculated Metrics</Typography>
+                  {[
+                    { label: 'Total Income', value: selectedLedger.metrics.totalIncome },
+                    { label: 'Total Investment', value: selectedLedger.metrics.totalInvestment },
+                    { label: 'UPI Expenses', value: selectedLedger.metrics.upiExpenses },
+                    { label: 'Bank Transfer', value: selectedLedger.metrics.bankTransferExpenses },
+                    { label: 'Credit Card', value: selectedLedger.metrics.creditCardExpenses },
+                    { label: 'Outflow (Bank)', value: selectedLedger.metrics.runningOutflowBankAccount },
+                  ].map(({ label, value }) => (
+                    <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', py: '5px', borderBottom: '1px solid #f0f0f0' }}>
+                      <Typography sx={{ fontSize: '0.78rem', color: '#6b7280' }}>{label}</Typography>
+                      <Typography sx={{ fontSize: '0.78rem', fontWeight: 600, color: '#374151' }}>{formatINR(value)}</Typography>
+                    </Box>
+                  ))}
                 </Box>
               )}
             </Box>
           )}
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setViewDetailsDialogOpen(false)}>Close</Button>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setViewDetailsDialogOpen(false)} variant="outlined"
+            sx={{ textTransform: 'none', borderRadius: '8px' }}>
+            Close
+          </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Notification */}
+      {/* Notification toast */}
       {notification.show && (
-        <Alert 
-          severity={notification.severity} 
-          sx={{ position: 'fixed', bottom: 20, right: 20, zIndex: 9999 }}
-          onClose={() => setNotification({ ...notification, show: false })}
-        >
+        <Alert severity={notification.severity}
+          sx={{ position: 'fixed', bottom: 80, right: 16, left: 16, zIndex: 9999, borderRadius: '12px', boxShadow: '0 4px 16px rgba(0,0,0,0.15)' }}
+          onClose={() => setNotification({ ...notification, show: false })}>
           {notification.message}
         </Alert>
       )}

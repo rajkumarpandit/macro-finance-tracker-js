@@ -259,8 +259,20 @@ function RecurringTransactionSetup() {
         transactionDesc: formData.transactionDesc.trim(),
         accountId: formData.accountId || '',
         accountName: formData.accountName || '',
+        recurrenceType: formData.recurrenceType,
+        expenseHead: formData.expenseHead,
         updatedAt: new Date()
       };
+
+      // Log transaction data for diagnosis
+      console.log('Saving Recurring Transaction:', {
+        transactionName: transactionData.transactionName,
+        recurrenceType: transactionData.recurrenceType,
+        amount: transactionData.amount,
+        frequency: transactionData.frequency,
+        type: transactionData.type,
+        merchant: transactionData.merchant
+      });
 
       if (editingId) {
         // Update existing
@@ -756,95 +768,121 @@ function RecurringTransactionSetup() {
         </Tabs>
       </Paper>
 
+      {/* Filtered dropdown for recurring transactions */}
+      {/* Example: If you have a dropdown to select a recurring transaction, filter it here */}
+      {/*
+      <TextField
+        select
+        label="Recurring Transaction"
+        value={selectedRecurringId}
+        onChange={handleChangeRecurring}
+      >
+        {recurringTransactions
+          .filter(t => {
+            const recurrenceType = t.recurrenceType || 'periodic';
+            return tabValue === 0 ? recurrenceType === 'periodic' : recurrenceType === 'template';
+          })
+          .map(t => (
+            <MenuItem key={t.id} value={t.id}>{t.transactionName}</MenuItem>
+          ))}
+      </TextField>
+      */}
+
       {loading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
           <CircularProgress size={32} />
         </Box>
-      ) : recurringTransactions.filter(t => {
-        // Filter by recurrence type based on tab
-        const recurrenceType = t.recurrenceType || 'periodic'; // Default to periodic for existing records
-        return tabValue === 0 ? recurrenceType === 'periodic' : recurrenceType === 'template';
-      }).length === 0 ? (
-        <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#ffffff' }}>
-          <Typography color="text.secondary" sx={{ fontSize: '0.875rem' }}>
-            No recurring transactions found. Add your first one above!
-          </Typography>
-        </Paper>
-      ) : (
-        <Grid container spacing={2}>
-          {recurringTransactions
-            .filter(t => {
-              // Filter by recurrence type based on tab
-              const recurrenceType = t.recurrenceType || 'periodic'; // Default to periodic for existing records
-              return tabValue === 0 ? recurrenceType === 'periodic' : recurrenceType === 'template';
-            })
-            .map((transaction) => (
-            <Grid item xs={12} sm={6} md={4} key={transaction.id}>
-              <Card elevation={2} sx={{ bgcolor: '#ffffff', borderLeft: editingId === transaction.id ? '3px solid #616161' : 'none' }}>
-                <CardContent sx={{ pb: 0.5, p: 1.5 }}>
-                  <Typography variant="h6" fontWeight="600" sx={{ mb: 0.5, fontSize: '0.875rem', color: editingId === transaction.id ? '#616161' : 'inherit' }}>
-                    {transaction.transactionName}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontSize: '0.7rem' }}>
-                    {transaction.transactionDesc || transaction.merchant}
-                  </Typography>
-                  {(transaction.recurrenceType || 'periodic') === 'periodic' && (
-                    <Typography variant="body1" fontWeight="600" color="primary" sx={{ mb: 0.5, fontSize: '0.85rem' }}>
-                      {transaction.currency} {transaction.amount.toFixed(2)}
+      ) : (() => {
+        // Filter transactions by recurrence type for each tab
+        const filteredTransactions = recurringTransactions.filter(t => {
+          const recurrenceType = t.recurrenceType || 'periodic';
+          if (tabValue === 0) {
+            // RCNG tab: only periodic
+            return recurrenceType === 'periodic';
+          } else {
+            // TMPL tab: only template
+            return recurrenceType === 'template';
+          }
+        });
+        if (filteredTransactions.length === 0) {
+          return (
+            <Paper sx={{ p: 2, textAlign: 'center', bgcolor: '#ffffff' }}>
+              <Typography color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                No recurring transactions found. Add your first one above!
+              </Typography>
+            </Paper>
+          );
+        }
+        return (
+          <Grid container spacing={2}>
+            {filteredTransactions.map((transaction) => (
+              <Grid item xs={12} sm={6} md={4} key={transaction.id}>
+                <Card elevation={2} sx={{ bgcolor: '#ffffff', borderLeft: editingId === transaction.id ? '3px solid #616161' : 'none' }}>
+                  <CardContent sx={{ pb: 0.5, p: 1.5 }}>
+                    <Typography variant="h6" fontWeight="600" sx={{ mb: 0.5, fontSize: '0.875rem', color: editingId === transaction.id ? '#616161' : 'inherit' }}>
+                      {transaction.transactionName}
                     </Typography>
-                  )}
-                  <Grid container spacing={1} sx={{ fontSize: '0.75rem' }}>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5, fontSize: '0.7rem' }}>
+                      {transaction.transactionDesc || transaction.merchant}
+                    </Typography>
                     {(transaction.recurrenceType || 'periodic') === 'periodic' && (
-                      <>
-                        <Grid item xs={6}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Frequency:</Typography>
-                          <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{transaction.frequency}</Typography>
-                        </Grid>
-                        <Grid item xs={6}>
-                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Type:</Typography>
-                          <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{transaction.type}</Typography>
-                        </Grid>
-                      </>
+                      <Typography variant="body1" fontWeight="600" color="primary" sx={{ mb: 0.5, fontSize: '0.85rem' }}>
+                        {transaction.currency} {transaction.amount.toFixed(2)}
+                      </Typography>
                     )}
-                    <Grid item xs={6}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Merchant:</Typography>
-                      <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{transaction.merchant}</Typography>
-                    </Grid>
-                    {(transaction.recurrenceType || 'periodic') === 'periodic' && (
+                    <Grid container spacing={1} sx={{ fontSize: '0.75rem' }}>
+                      {(transaction.recurrenceType || 'periodic') === 'periodic' && (
+                        <>
+                          <Grid item xs={6}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Frequency:</Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{transaction.frequency}</Typography>
+                          </Grid>
+                          <Grid item xs={6}>
+                            <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Type:</Typography>
+                            <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{transaction.type}</Typography>
+                          </Grid>
+                        </>
+                      )}
                       <Grid item xs={6}>
-                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Due By:</Typography>
-                        <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{transaction.dueBy}{transaction.dueBy === 1 ? 'st' : transaction.dueBy === 2 ? 'nd' : transaction.dueBy === 3 ? 'rd' : 'th'}</Typography>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Merchant:</Typography>
+                        <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{transaction.merchant}</Typography>
                       </Grid>
-                    )}
-                    <Grid item xs={6}>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Payment Mode:</Typography>
-                      <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{transaction.usualPaymentMode || 'UPI'}</Typography>
+                      {(transaction.recurrenceType || 'periodic') === 'periodic' && (
+                        <Grid item xs={6}>
+                          <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Due By:</Typography>
+                          <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{transaction.dueBy}{transaction.dueBy === 1 ? 'st' : transaction.dueBy === 2 ? 'nd' : transaction.dueBy === 3 ? 'rd' : 'th'}</Typography>
+                        </Grid>
+                      )}
+                      <Grid item xs={6}>
+                        <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>Payment Mode:</Typography>
+                        <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>{transaction.usualPaymentMode || 'UPI'}</Typography>
+                      </Grid>
                     </Grid>
-                  </Grid>
-                </CardContent>
-                <CardActions sx={{ justifyContent: 'flex-end', pt: 0 }}>
-                  <IconButton
-                    size="small"
-                    color="primary"
-                    onClick={() => handleEdit(transaction)}
-                    title="Edit"
-                  >
-                    <EditIcon fontSize="small" />
-                  </IconButton>
-                  <IconButton
-                    size="small"
-                    color="error"
-                    onClick={() => handleDelete(transaction.id)}
-                    title="Delete"
-                  >
-                    <DeleteIcon fontSize="small" />
-                  </IconButton>
-                </CardActions>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
+                  </CardContent>
+                  <CardActions sx={{ justifyContent: 'flex-end', pt: 0 }}>
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      onClick={() => handleEdit(transaction)}
+                      title="Edit"
+                    >
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => handleDelete(transaction.id)}
+                      title="Delete"
+                    >
+                      <DeleteIcon fontSize="small" />
+                    </IconButton>
+                  </CardActions>
+                </Card>
+              </Grid>
+            ))}
+          </Grid>
+        );
+      })()}
 
       <Footer />
     </Box>

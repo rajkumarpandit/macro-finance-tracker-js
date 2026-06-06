@@ -108,6 +108,33 @@ service cloud.firestore {
       allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
     }
     
+    // Loan EMIs - user's loan EMI payment tracking
+    match /loan_emis/{emiId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // Term Deposits - user's term deposit information
+    match /term_deposits/{tdId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
+    // MF-SIPs - user's mutual fund SIP information
+    match /mf_sips/{sipId} {
+      allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
+      allow create: if isSignedIn() && request.auth.uid == request.resource.data.userId;
+      allow update: if isSignedIn() && request.auth.uid == resource.data.userId 
+                    && request.auth.uid == request.resource.data.userId;
+      allow delete: if isSignedIn() && request.auth.uid == resource.data.userId;
+    }
+    
     // Insurances - user's insurance policy information
     match /insurances/{insuranceId} {
       allow read: if isSignedIn() && request.auth.uid == resource.data.userId;
@@ -129,6 +156,16 @@ service cloud.firestore {
     
     // Categories - personal expense categories
     match /categories/{categoryId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
+      allow update: if isSignedIn() && 
+                    resource.data.userId == request.auth.uid && 
+                    request.resource.data.userId == request.auth.uid;
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+    
+    // Risk Profiles - user's investment risk assessment profiles
+    match /risk_profiles/{profileId} {
       allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
       allow create: if isSignedIn() && request.resource.data.userId == request.auth.uid;
       allow update: if isSignedIn() && 
@@ -181,6 +218,33 @@ service cloud.firestore {
       
       // Only authenticated users can update exchange rates
       allow write: if isSignedIn();
+    }
+    
+    // Mutual Fund API Configurations - admin only
+    match /mf_api_configurations/{configId} {
+      // Only admins can read and manage API configurations
+      allow read, write: if isAdmin();
+    }
+    
+    // Mutual Fund Sync Logs - admin only
+    match /mf_sync_logs/{logId} {
+      // Only admins can read and write sync logs
+      allow read, write: if isAdmin();
+    }
+    
+    // Mutual Fund Sync Jobs - admin only (job history tracking)
+    match /mf_sync_jobs/{jobId} {
+      // Only admins can read and write job history
+      allow read, write: if isAdmin();
+    }
+    
+    // Mutual Funds Database - read by all authenticated users, write by admins only
+    match /mutual_funds/{fundId} {
+      // All authenticated users can read mutual funds data
+      allow read: if isSignedIn();
+      
+      // Only admins can add/update/delete mutual funds data
+      allow write: if isAdmin();
     }
   }
 }

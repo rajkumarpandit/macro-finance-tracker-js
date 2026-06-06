@@ -304,22 +304,6 @@ function CurrencyManager() {
           </Box>
         </Paper>
 
-        {/* Compact Info Alert */}
-        <Alert 
-          severity="info" 
-          sx={{ 
-            mb: 2, 
-            py: 0.5, 
-            '& .MuiAlert-icon': { fontSize: 18 },
-            bgcolor: '#ffffff',
-            border: '1px solid #e3f2fd'
-          }}
-        >
-          <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-            All rates shown relative to INR. Click "Refresh" to update from internet.
-          </Typography>
-        </Alert>
-
         {/* Compact Exchange Rates Table */}
         {loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
@@ -405,6 +389,22 @@ function CurrencyManager() {
             </Table>
           </TableContainer>
         )}
+
+        {/* Compact Info Alert */}
+        <Alert 
+          severity="info" 
+          sx={{ 
+            mt: 1.5,
+            py: 0.5, 
+            '& .MuiAlert-icon': { fontSize: 18 },
+            bgcolor: '#ffffff',
+            border: '1px solid #e3f2fd'
+          }}
+        >
+          <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
+            All rates shown relative to INR. Click "Refresh" to update from internet.
+          </Typography>
+        </Alert>
 
         {/* Compact Footer Note */}
         <Box sx={{ mt: 2, p: 1.5, bgcolor: '#ffffff', borderRadius: 1, border: '1px solid #e0e0e0' }}>

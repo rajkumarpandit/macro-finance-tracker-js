@@ -2,31 +2,18 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Typography,
-  Paper,
   Box,
   FormControl,
   InputLabel,
   Select,
   MenuItem,
-  Tabs,
-  Tab,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   TextField,
   CircularProgress,
   Alert,
   Chip,
   Grid,
-  Card,
-  CardContent,
-  Switch,
-  FormControlLabel,
   Button,
-  Stack
+  IconButton
 } from '@mui/material';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import BookIcon from '@mui/icons-material/Book';
@@ -38,19 +25,12 @@ import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import SavingsIcon from '@mui/icons-material/Savings';
 import DownloadIcon from '@mui/icons-material/Download';
 import TableViewIcon from '@mui/icons-material/TableView';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import Footer from '../Common/Footer';
 import { useAuth } from '../Auth/AuthContext';
 import { db } from '../../firebase/firebase';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import { convertToINR, formatINR, formatCurrencyWithOriginal, fetchExchangeRates } from '../../utils/currencyUtils';
-
-function TabPanel({ children, value, index }) {
-  return (
-    <div role="tabpanel" hidden={value !== index}>
-      {value === index && <Box sx={{ pt: 3 }}>{children}</Box>}
-    </div>
-  );
-}
 
 function ReportPage() {
   const { currentUser } = useAuth();
@@ -84,9 +64,12 @@ function ReportPage() {
   const [paymentModes, setPaymentModes] = useState([]);
   const [selectedPaymentMode, setSelectedPaymentMode] = useState('all');
   
-  // Bank Account filter states
-  const [bankAccounts, setBankAccounts] = useState([]);
   const [selectedBankAccount, setSelectedBankAccount] = useState('all');
+
+  // Refresh transactions for current ledger
+  const handleRefresh = () => {
+    if (selectedLedger) fetchTransactions(selectedLedger);
+  };
 
   // Fetch all ledgers for the user
   const fetchLedgers = async () => {
@@ -170,11 +153,7 @@ function ReportPage() {
         .map(t => t.paymentMode))];
       setPaymentModes(modes.sort());
       
-      // Extract unique bank accounts from transactions
-      const accounts = [...new Set(transactionsData
-        .filter(t => t.accountName)
-        .map(t => t.accountName))];
-      setBankAccounts(accounts.sort());
+      // Extract unique bank accounts from transactions (used for filter options via selectedLedgerData)
     } catch (error) {
       console.error('Error fetching transactions:', error);
       setTransactions([]);
@@ -460,865 +439,310 @@ function ReportPage() {
 
   const selectedLedgerData = ledgers.find(l => l.id === selectedLedger);
 
+  // ── Shared Credit/Debit pill toggles + Download buttons ──
+  const FilterToolbar = () => (
+    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
+      <Box sx={{ display: 'flex', gap: '6px' }}>
+        <Box
+          onClick={handleCreditToggle.bind(null, { target: { checked: !transactionTypes.includes('credit') } })}
+          sx={{
+            px: 1.5, py: '5px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700,
+            border: `1.5px solid ${transactionTypes.includes('credit') ? '#16a34a' : '#d1d5db'}`,
+            bgcolor: transactionTypes.includes('credit') ? '#dcfce7' : '#f9fafb',
+            color: transactionTypes.includes('credit') ? '#16a34a' : '#9ca3af',
+            transition: 'all 0.15s', userSelect: 'none',
+            display: 'flex', alignItems: 'center', gap: '4px'
+          }}
+        >
+          ▲ Credit
+        </Box>
+        <Box
+          onClick={handleDebitToggle.bind(null, { target: { checked: !transactionTypes.includes('debit') } })}
+          sx={{
+            px: 1.5, py: '5px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700,
+            border: `1.5px solid ${transactionTypes.includes('debit') ? '#dc2626' : '#d1d5db'}`,
+            bgcolor: transactionTypes.includes('debit') ? '#fee2e2' : '#f9fafb',
+            color: transactionTypes.includes('debit') ? '#dc2626' : '#9ca3af',
+            transition: 'all 0.15s', userSelect: 'none',
+            display: 'flex', alignItems: 'center', gap: '4px'
+          }}
+        >
+          ▼ Debit
+        </Box>
+      </Box>
+      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+        <IconButton size="small" onClick={handleRefresh} disabled={transactionsLoading} title="Refresh"
+          sx={{ color: '#9ca3af', '&:hover': { color: '#374151' } }}>
+          <RefreshIcon sx={{ fontSize: 18 }} />
+        </IconButton>
+        <Button size="small" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />} onClick={downloadCSV}
+          disabled={filteredTransactions.length === 0}
+          sx={{ fontSize: '0.72rem', fontWeight: 700, bgcolor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0',
+            borderRadius: '8px', py: '4px', px: 1.25, '&:hover': { bgcolor: '#dcfce7' }, textTransform: 'none', minWidth: 0 }}>
+          CSV
+        </Button>
+        <Button size="small" startIcon={<TableViewIcon sx={{ fontSize: 14 }} />} onClick={downloadExcel}
+          disabled={filteredTransactions.length === 0}
+          sx={{ fontSize: '0.72rem', fontWeight: 700, bgcolor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe',
+            borderRadius: '8px', py: '4px', px: 1.25, '&:hover': { bgcolor: '#dbeafe' }, textTransform: 'none', minWidth: 0 }}>
+          Excel
+        </Button>
+      </Box>
+    </Box>
+  );
+
+  // ── Reusable date filter sub-form ──
+  const DateFilterForm = () => (
+    <>
+      <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
+        <InputLabel>Date Range</InputLabel>
+        <Select value={dateFilter} onChange={handleDateFilterChange} label="Date Range">
+          <MenuItem value="all">All time</MenuItem>
+          <MenuItem value="today">Today</MenuItem>
+          <MenuItem value="yesterday">Yesterday</MenuItem>
+          <MenuItem value="thisWeek">This Week</MenuItem>
+          <MenuItem value="lastWeek">Last Week</MenuItem>
+          <MenuItem value="custom">Custom range…</MenuItem>
+        </Select>
+      </FormControl>
+      {dateFilter === 'custom' && (
+        <Grid container spacing={1.5}>
+          <Grid item xs={6}>
+            <TextField fullWidth size="small" label="From" type="date" value={customStartDate}
+              onChange={(e) => setCustomStartDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+          </Grid>
+          <Grid item xs={6}>
+            <TextField fullWidth size="small" label="To" type="date" value={customEndDate}
+              onChange={(e) => setCustomEndDate(e.target.value)} InputLabelProps={{ shrink: true }} />
+          </Grid>
+        </Grid>
+      )}
+    </>
+  );
+
   return (
-    <Box sx={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', bgcolor: '#f5f7fa' }}>
-      <Box sx={{ pb: 10 }}>
-        {/* Page Title - Outside Paper */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          <AssessmentIcon sx={{ fontSize: 24, color: '#42a5f5' }} />
-          <Typography variant="h6" fontWeight="700" sx={{ fontSize: '1.1rem' }}>
+    <Box sx={{ minHeight: '100vh', bgcolor: '#f8f9fb', pb: 10 }}>
+
+      {/* ── Sticky Header ── */}
+      <Box sx={{
+        position: 'sticky', top: 0, zIndex: 10,
+        bgcolor: '#fff', borderBottom: '1px solid #e8ecf0',
+        px: 2, py: 1.25,
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
+      }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <AssessmentIcon sx={{ fontSize: 20, color: '#1d4ed8' }} />
+          <Typography fontWeight="800" sx={{ fontSize: '1rem', letterSpacing: '-0.2px', color: '#1a1a2e' }}>
             Reports
           </Typography>
         </Box>
+        {selectedLedgerData && (
+          <Chip
+            icon={<BookIcon sx={{ fontSize: '14px !important' }} />}
+            label={selectedLedgerData.name}
+            size="small"
+            sx={{
+              fontWeight: 600, fontSize: '0.7rem',
+              bgcolor: selectedLedgerData.status === 'open' ? '#eff6ff' : '#f9fafb',
+              color: selectedLedgerData.status === 'open' ? '#1d4ed8' : '#6b7280',
+              border: `1px solid ${selectedLedgerData.status === 'open' ? '#bfdbfe' : '#e5e7eb'}`
+            }}
+          />
+        )}
+      </Box>
 
-        <Paper elevation={3} sx={{ p: { xs: 2, sm: 3 }, borderRadius: 2 }}>
-          {/* Ledger Selector */}
-          <Box sx={{ mb: 3 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Select Ledger</InputLabel>
-              <Select
-                value={selectedLedger}
-                onChange={handleLedgerChange}
-                label="Select Ledger"
-                disabled={ledgerLoading}
-                startAdornment={<BookIcon sx={{ mr: 1, color: '#42a5f5' }} />}
-                sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
-              >
-                {ledgers.map((ledger) => (
-                  <MenuItem 
-                    key={ledger.id} 
-                    value={ledger.id}
-                    sx={{ 
-                      display: 'flex', 
-                      flexDirection: 'column', 
-                      alignItems: 'flex-start',
-                      py: 1.5 
-                    }}
-                  >
-                    <Box sx={{ display: 'flex', alignItems: 'center', width: '100%', mb: 0.5 }}>
-                      <Typography variant="body2" fontWeight="600" sx={{ flex: 1 }}>
-                        {ledger.name}
-                      </Typography>
-                      <Chip 
-                        label={ledger.status === 'open' ? 'Open' : 'Closed'} 
-                        size="small" 
-                        sx={{ height: 18, fontSize: '0.65rem', textTransform: 'capitalize', ...(ledger.status === 'open' ? { bgcolor: '#42a5f5', color: '#fff' } : {}) }} 
-                      />
+      <Box sx={{ px: 2, pt: 2 }}>
+
+        {/* ── Ledger Selector ── */}
+        <FormControl fullWidth size="small" sx={{ mb: 2 }}>
+          <InputLabel>Select Ledger</InputLabel>
+          <Select value={selectedLedger} onChange={handleLedgerChange} label="Select Ledger"
+            disabled={ledgerLoading} sx={{ bgcolor: '#fff', borderRadius: 2 }}>
+            {ledgers.map((ledger) => (
+              <MenuItem key={ledger.id} value={ledger.id}
+                sx={{ display: 'flex', justifyContent: 'space-between', gap: 1 }}>
+                <Typography variant="body2" fontWeight="600" sx={{ flex: 1 }}>{ledger.name}</Typography>
+                <Chip label={ledger.status === 'open' ? 'Open' : 'Closed'} size="small"
+                  sx={{ height: 18, fontSize: '0.62rem', fontWeight: 700,
+                    bgcolor: ledger.status === 'open' ? '#eff6ff' : '#f9fafb',
+                    color: ledger.status === 'open' ? '#1d4ed8' : '#6b7280' }} />
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
+        {!ledgerLoading && ledgers.length === 0 && (
+          <Alert severity="warning" sx={{ mb: 2, borderRadius: 2 }}>
+            No ledgers found. Please create a ledger from the Ledger page.
+          </Alert>
+        )}
+
+        {selectedLedger && selectedLedgerData && (
+          <>
+            {/* ── Summary Cards 2×2 ── */}
+            <Grid container spacing={1.5} sx={{ mb: 2 }}>
+              {[
+                { label: 'Income', value: formatCurrency(summary.income), color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0', icon: <TrendingUpIcon sx={{ fontSize: 16, color: '#16a34a' }} /> },
+                { label: 'Expenses', value: formatCurrency(summary.expenses), color: '#dc2626', bg: '#fff5f5', border: '#fecaca', icon: <TrendingDownIcon sx={{ fontSize: 16, color: '#dc2626' }} /> },
+                { label: 'Investment', value: formatCurrency(summary.investment), color: '#0f766e', bg: '#f0fdfa', border: '#99f6e4', icon: <SavingsIcon sx={{ fontSize: 16, color: '#0f766e' }} /> },
+                { label: 'Records', value: `${summary.count}`, color: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe', icon: <AssessmentIcon sx={{ fontSize: 16, color: '#1d4ed8' }} /> },
+              ].map(({ label, value, color, bg, border, icon }) => (
+                <Grid item xs={6} key={label}>
+                  <Box sx={{ bgcolor: bg, border: `1.5px solid ${border}`, borderRadius: '12px', p: '10px 12px', height: '68px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      {icon}
+                      <Typography sx={{ fontSize: '0.7rem', color: '#6b7280', fontWeight: 500 }}>{label}</Typography>
                     </Box>
-                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                      {ledger.startDate?.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })} - {ledger.endDate?.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    <Typography fontWeight="800" sx={{ fontSize: '0.95rem', color, letterSpacing: '-0.3px' }}>
+                      {value}
                     </Typography>
-                  </MenuItem>
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+
+            {/* ── Filter Card ── */}
+            <Box sx={{ bgcolor: '#fff', borderRadius: '14px', border: '1px solid #e8ecf0', mb: 2, overflow: 'hidden' }}>
+              {/* Tab strip */}
+              <Box sx={{ display: 'flex', borderBottom: '1px solid #f0f0f0', bgcolor: '#fafafa' }}>
+                {[
+                  { index: 0, icon: <SavingsIcon sx={{ fontSize: 15 }} />, label: 'Account' },
+                  { index: 1, icon: <TodayIcon sx={{ fontSize: 15 }} />, label: 'Date' },
+                  { index: 2, icon: <CategoryIcon sx={{ fontSize: 15 }} />, label: 'Category' },
+                  { index: 3, icon: <PaymentIcon sx={{ fontSize: 15 }} />, label: 'Payment' },
+                ].map(({ index, icon, label }) => (
+                  <Box key={index} onClick={() => handleTabChange(null, index)} sx={{
+                    flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
+                    py: '10px', cursor: 'pointer',
+                    borderBottom: tabValue === index ? '2px solid #1d4ed8' : '2px solid transparent',
+                    bgcolor: tabValue === index ? '#fff' : 'transparent',
+                    transition: 'all 0.15s',
+                    color: tabValue === index ? '#1d4ed8' : '#9ca3af',
+                  }}>
+                    {icon}
+                    <Typography sx={{ fontSize: '0.62rem', fontWeight: tabValue === index ? 700 : 500, lineHeight: 1 }}>{label}</Typography>
+                  </Box>
                 ))}
-              </Select>
-            </FormControl>
-          </Box>
-
-          {/* No ledger warning */}
-          {!ledgerLoading && ledgers.length === 0 && (
-            <Alert severity="warning" sx={{ mb: 3 }}>
-              No ledgers found. Please create a ledger from the Admin page.
-            </Alert>
-          )}
-
-          {/* Show content only if ledger is selected */}
-          {selectedLedger && selectedLedgerData && (
-            <>
-              {/* Summary Cards */}
-              <Grid container spacing={2} sx={{ mb: 3 }}>
-                <Grid item xs={6} sm={3}>
-                  <Card elevation={1} sx={{ bgcolor: '#ffffff', borderLeft: '4px solid #4caf50' }}>
-                    <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                        <TrendingUpIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: '#4caf50', mr: 0.5 }} />
-                        <Typography variant="caption" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
-                          Income
-                        </Typography>
-                      </Box>
-                      <Typography 
-                        variant="h6" 
-                        fontWeight="700" 
-                        color="#4caf50"
-                        sx={{ fontSize: { xs: '0.9rem', sm: '1.25rem' } }}
-                      >
-                        {formatCurrency(summary.income)}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Card elevation={1} sx={{ bgcolor: '#ffffff', borderLeft: '4px solid #f44336' }}>
-                    <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                        <TrendingDownIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: '#f44336', mr: 0.5 }} />
-                        <Typography variant="caption" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
-                          Expenses
-                        </Typography>
-                      </Box>
-                      <Typography 
-                        variant="h6" 
-                        fontWeight="700" 
-                        color="#f44336"
-                        sx={{ fontSize: { xs: '0.9rem', sm: '1.25rem' } }}
-                      >
-                        {formatCurrency(summary.expenses)}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Card elevation={1} sx={{ bgcolor: '#ffffff', borderLeft: '4px solid #00695c' }}>
-                    <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
-                        <SavingsIcon sx={{ fontSize: { xs: 16, sm: 20 }, color: '#00695c', mr: 0.5 }} />
-                        <Typography variant="caption" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
-                          Investment
-                        </Typography>
-                      </Box>
-                      <Typography 
-                        variant="h6" 
-                        fontWeight="700" 
-                        color="#00695c"
-                        sx={{ fontSize: { xs: '0.9rem', sm: '1.25rem' } }}
-                      >
-                        {formatCurrency(summary.investment)}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-                <Grid item xs={6} sm={3}>
-                  <Card elevation={1} sx={{ bgcolor: '#ffffff', borderLeft: '4px solid #1976d2' }}>
-                    <CardContent sx={{ p: { xs: 1.5, sm: 2 }, '&:last-child': { pb: { xs: 1.5, sm: 2 } } }}>
-                      <Typography variant="caption" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
-                        Records
-                      </Typography>
-                      <Typography 
-                        variant="h6" 
-                        fontWeight="700" 
-                        color="#1976d2"
-                        sx={{ fontSize: { xs: '0.9rem', sm: '1.25rem' } }}
-                      >
-                        {summary.count}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                </Grid>
-              </Grid>
-
-              {/* Tabs for filters */}
-              <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
-                <Tabs 
-                  value={tabValue} 
-                  onChange={handleTabChange}
-                  variant="fullWidth"
-                  sx={{
-                    '& .MuiTab-root': {
-                      fontSize: { xs: '0.7rem', sm: '0.875rem' },
-                      minHeight: { xs: 42, sm: 48 },
-                      minWidth: { xs: 'auto', sm: 120 },
-                      bgcolor: '#ffffff',
-                      borderLeft: '3px solid transparent',
-                      transition: 'all 0.3s ease',
-                      '&.Mui-selected': {
-                        bgcolor: '#ffffff',
-                        borderLeft: '3px solid #1976d2',
-                        fontWeight: 600
-                      }
-                    },
-                    '& .MuiTabs-indicator': {
-                      display: 'none'
-                    }
-                  }}
-                >
-                  <Tab 
-                    icon={<SavingsIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />} 
-                    label="B/Acct" 
-                    iconPosition="start"
-                  />
-                  <Tab 
-                    icon={<TodayIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />} 
-                    label="T/Date" 
-                    iconPosition="start"
-                  />
-                  <Tab 
-                    icon={<CategoryIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />} 
-                    label="E/Head" 
-                    iconPosition="start"
-                  />
-                  <Tab 
-                    icon={<PaymentIcon sx={{ fontSize: { xs: 18, sm: 20 } }} />} 
-                    label="P/Mode" 
-                    iconPosition="start"
-                  />
-                </Tabs>
               </Box>
 
-              {/* Date-based Filter Tab */}
-              <TabPanel value={tabValue} index={1}>
-                <Box sx={{ mb: 3 }}>
-                  {/* Credit/Debit Switches and Download Buttons */}
-                  <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-                    <Box sx={{ display: 'flex', gap: 2 }}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={transactionTypes.includes('credit')}
-                            onChange={handleCreditToggle}
-                            size="small"
-                            sx={{
-                              '& .MuiSwitch-switchBase.Mui-checked': {
-                                color: '#4caf50',
-                              },
-                              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                backgroundColor: '#4caf50',
-                              },
-                            }}
-                          />
-                        }
-                        label={
-                          <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                            Credit
-                          </Typography>
-                        }
-                      />
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={transactionTypes.includes('debit')}
-                            onChange={handleDebitToggle}
-                            size="small"
-                            sx={{
-                              '& .MuiSwitch-switchBase.Mui-checked': {
-                                color: '#f44336',
-                              },
-                              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                backgroundColor: '#f44336',
-                              },
-                            }}
-                          />
-                        }
-                        label={
-                          <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                            Debit
-                          </Typography>
-                        }
-                      />
+              {/* Filter controls for active tab */}
+              <Box sx={{ p: 1.5, pt: 1.25 }}>
+                {tabValue === 0 && (
+                  <>
+                    <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
+                      <InputLabel>Bank Account</InputLabel>
+                      <Select value={selectedBankAccount} onChange={handleBankAccountChange} label="Bank Account">
+                        <MenuItem value="all">All Accounts</MenuItem>
+                        {(selectedLedgerData?.accountBalances || []).filter(a => a.accountId).map((account) => (
+                          <MenuItem key={account.accountId} value={account.accountId}>
+                            {account.accountName || account.accountId}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                    <DateFilterForm />
+                  </>
+                )}
+                {tabValue === 1 && <DateFilterForm />}
+                {tabValue === 2 && (
+                  <>
+                    <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
+                      <InputLabel>Expense Category</InputLabel>
+                      <Select value={selectedExpenseHead} onChange={handleExpenseHeadChange} label="Expense Category">
+                        <MenuItem value="all">All Categories</MenuItem>
+                        {expenseHeads.map((head) => <MenuItem key={head} value={head}>{head}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                    <DateFilterForm />
+                  </>
+                )}
+                {tabValue === 3 && (
+                  <>
+                    <DateFilterForm />
+                    <FormControl fullWidth size="small" sx={{ mt: 1.5 }}>
+                      <InputLabel>Payment Mode</InputLabel>
+                      <Select value={selectedPaymentMode} onChange={handlePaymentModeChange} label="Payment Mode">
+                        <MenuItem value="all">All Modes</MenuItem>
+                        {paymentModes.map((mode) => <MenuItem key={mode} value={mode}>{mode}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                  </>
+                )}
+              </Box>
+            </Box>
+
+            {/* ── Shared Credit/Debit + Download toolbar ── */}
+            <FilterToolbar />
+
+            {/* ── Transaction List ── */}
+            {transactionsLoading ? (
+              <Box sx={{ display: 'flex', justifyContent: 'center', py: 5 }}>
+                <CircularProgress />
+              </Box>
+            ) : filteredTransactions.length === 0 ? (
+              <Box sx={{ textAlign: 'center', py: 4, bgcolor: '#fff', borderRadius: 2, border: '1px solid #e8ecf0' }}>
+                <AssessmentIcon sx={{ fontSize: 40, color: '#d1d5db', mb: 1 }} />
+                <Typography variant="body2" color="text.secondary">No transactions for the selected filters</Typography>
+              </Box>
+            ) : (
+              <Box sx={{ bgcolor: '#fff', borderRadius: '14px', border: '1px solid #e8ecf0', overflow: 'hidden' }}>
+                {/* Header row */}
+                <Box sx={{ display: 'flex', px: 2, py: 1, bgcolor: '#f9fafb', borderBottom: '1px solid #f0f0f0' }}>
+                  <Typography sx={{ flex: '0 0 72px', fontSize: '0.65rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Date</Typography>
+                  <Typography sx={{ flex: 1, fontSize: '0.65rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Description</Typography>
+                  <Typography sx={{ flex: '0 0 80px', textAlign: 'right', fontSize: '0.65rem', fontWeight: 700, color: '#9ca3af', textTransform: 'uppercase' }}>Amount</Typography>
+                </Box>
+                {/* Transaction rows */}
+                {filteredTransactions.map((t, idx) => (
+                  <Box key={t.id} sx={{
+                    display: 'flex', alignItems: 'center', px: 2, py: '10px',
+                    borderBottom: idx < filteredTransactions.length - 1 ? '1px solid #f5f5f5' : 'none',
+                    '&:hover': { bgcolor: '#fafafa' }, transition: 'background 0.1s'
+                  }}>
+                    {/* Date */}
+                    <Box sx={{ flex: '0 0 72px' }}>
+                      <Typography sx={{ fontSize: '0.72rem', color: '#374151', fontWeight: 500, lineHeight: 1.3 }}>
+                        {t.date ? t.date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'N/A'}
+                      </Typography>
+                      <Typography sx={{ fontSize: '0.62rem', color: '#9ca3af' }}>
+                        {t.date ? t.date.getFullYear() : ''}
+                      </Typography>
                     </Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<DownloadIcon />}
-                        onClick={downloadCSV}
-                        disabled={filteredTransactions.length === 0}
-                        sx={{ 
-                          bgcolor: '#4caf50',
-                          '&:hover': { bgcolor: '#45a049' },
-                          fontSize: { xs: '0.7rem', sm: '0.8rem' }
-                        }}
-                      >
-                        CSV
-                      </Button>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<TableViewIcon />}
-                        onClick={downloadExcel}
-                        disabled={filteredTransactions.length === 0}
-                        sx={{ 
-                          bgcolor: '#2196f3',
-                          '&:hover': { bgcolor: '#1976d2' },
-                          fontSize: { xs: '0.7rem', sm: '0.8rem' }
-                        }}
-                      >
-                        Excel
-                      </Button>
+                    {/* Description + tags */}
+                    <Box sx={{ flex: 1, minWidth: 0, pr: 1 }}>
+                      <Typography sx={{ fontSize: '0.82rem', color: '#111827', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {t.transactionDesc || t.description || 'N/A'}
+                      </Typography>
+                      <Box sx={{ display: 'flex', gap: '4px', mt: '3px', flexWrap: 'wrap' }}>
+                        {t.expenseHead && (
+                          <Typography sx={{ fontSize: '0.62rem', color: '#6b7280', bgcolor: '#f3f4f6', px: '6px', py: '1px', borderRadius: '10px' }}>
+                            {t.expenseHead}
+                          </Typography>
+                        )}
+                        {t.paymentMode && (
+                          <Typography sx={{ fontSize: '0.62rem', color: '#6b7280', bgcolor: '#f3f4f6', px: '6px', py: '1px', borderRadius: '10px' }}>
+                            {t.paymentMode}
+                          </Typography>
+                        )}
+                        {t.accountName && (
+                          <Typography sx={{ fontSize: '0.62rem', color: '#9ca3af' }}>{t.accountName}</Typography>
+                        )}
+                      </Box>
                     </Box>
+                    {/* Amount */}
+                    <Typography fontWeight="700" sx={{
+                      flex: '0 0 80px', textAlign: 'right', fontSize: '0.85rem',
+                      color: t.type === 'income' ? '#16a34a' : '#dc2626'
+                    }}>
+                      {t.type === 'income' ? '+' : '-'}{formatCurrencyWithOriginal(t.amount, t.currency, true)}
+                    </Typography>
                   </Box>
-
-                  <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                    <InputLabel>Date Filter</InputLabel>
-                    <Select
-                      value={dateFilter}
-                      onChange={handleDateFilterChange}
-                      label="Date Filter"
-                    >
-                      <MenuItem value="all">All Transactions</MenuItem>
-                      <MenuItem value="today">Today</MenuItem>
-                      <MenuItem value="yesterday">Yesterday</MenuItem>
-                      <MenuItem value="thisWeek">This Week</MenuItem>
-                      <MenuItem value="lastWeek">Last Week</MenuItem>
-                      <MenuItem value="custom">Custom Date Range</MenuItem>
-                    </Select>
-                  </FormControl>
-
-                  {dateFilter === 'custom' && (
-                    <Grid container spacing={2}>
-                      <Grid item xs={6}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="Start Date"
-                          type="date"
-                          value={customStartDate}
-                          onChange={(e) => setCustomStartDate(e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      </Grid>
-                      <Grid item xs={6}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="End Date"
-                          type="date"
-                          value={customEndDate}
-                          onChange={(e) => setCustomEndDate(e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      </Grid>
-                    </Grid>
-                  )}
-                </Box>
-              </TabPanel>
-
-              {/* Expense Head Filter Tab */}
-              <TabPanel value={tabValue} index={2}>
-                <Box sx={{ mb: 3 }}>
-                  {/* Credit/Debit Switches and Download Buttons */}
-                  <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-                    <Box sx={{ display: 'flex', gap: 2 }}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={transactionTypes.includes('credit')}
-                            onChange={handleCreditToggle}
-                            size="small"
-                            sx={{
-                              '& .MuiSwitch-switchBase.Mui-checked': {
-                                color: '#4caf50',
-                              },
-                              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                backgroundColor: '#4caf50',
-                              },
-                            }}
-                          />
-                        }
-                        label={
-                          <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                            Credit
-                          </Typography>
-                        }
-                      />
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={transactionTypes.includes('debit')}
-                            onChange={handleDebitToggle}
-                            size="small"
-                            sx={{
-                              '& .MuiSwitch-switchBase.Mui-checked': {
-                                color: '#f44336',
-                              },
-                              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                backgroundColor: '#f44336',
-                              },
-                            }}
-                          />
-                        }
-                        label={
-                          <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                            Debit
-                          </Typography>
-                        }
-                      />
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<DownloadIcon />}
-                        onClick={downloadCSV}
-                        disabled={filteredTransactions.length === 0}
-                        sx={{ 
-                          bgcolor: '#4caf50',
-                          '&:hover': { bgcolor: '#45a049' },
-                          fontSize: { xs: '0.7rem', sm: '0.8rem' }
-                        }}
-                      >
-                        CSV
-                      </Button>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<TableViewIcon />}
-                        onClick={downloadExcel}
-                        disabled={filteredTransactions.length === 0}
-                        sx={{ 
-                          bgcolor: '#2196f3',
-                          '&:hover': { bgcolor: '#1976d2' },
-                          fontSize: { xs: '0.7rem', sm: '0.8rem' }
-                        }}
-                      >
-                        Excel
-                      </Button>
-                    </Box>
-                  </Box>
-
-                  <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                    <InputLabel>Expense Head</InputLabel>
-                    <Select
-                      value={selectedExpenseHead}
-                      onChange={handleExpenseHeadChange}
-                      label="Expense Head"
-                    >
-                      <MenuItem value="all">All Expense Heads</MenuItem>
-                      {expenseHeads.map((head) => (
-                        <MenuItem key={head} value={head}>
-                          {head}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                    <InputLabel>Date Filter</InputLabel>
-                    <Select
-                      value={dateFilter}
-                      onChange={handleDateFilterChange}
-                      label="Date Filter"
-                    >
-                      <MenuItem value="all">All Transactions</MenuItem>
-                      <MenuItem value="today">Today</MenuItem>
-                      <MenuItem value="yesterday">Yesterday</MenuItem>
-                      <MenuItem value="thisWeek">This Week</MenuItem>
-                      <MenuItem value="lastWeek">Last Week</MenuItem>
-                      <MenuItem value="custom">Custom Date Range</MenuItem>
-                    </Select>
-                  </FormControl>
-
-                  {dateFilter === 'custom' && (
-                    <Grid container spacing={2}>
-                      <Grid item xs={6}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="Start Date"
-                          type="date"
-                          value={customStartDate}
-                          onChange={(e) => setCustomStartDate(e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      </Grid>
-                      <Grid item xs={6}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="End Date"
-                          type="date"
-                          value={customEndDate}
-                          onChange={(e) => setCustomEndDate(e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      </Grid>
-                    </Grid>
-                  )}
-                </Box>
-              </TabPanel>
-
-              {/* Payment Mode Filter Tab */}
-              <TabPanel value={tabValue} index={3}>
-                <Box sx={{ mb: 3 }}>
-                  {/* Credit/Debit Switches and Download Buttons */}
-                  <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-                    <Box sx={{ display: 'flex', gap: 2 }}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={transactionTypes.includes('credit')}
-                            onChange={handleCreditToggle}
-                            size="small"
-                            sx={{
-                              '& .MuiSwitch-switchBase.Mui-checked': {
-                                color: '#4caf50',
-                              },
-                              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                backgroundColor: '#4caf50',
-                              },
-                            }}
-                          />
-                        }
-                        label={
-                          <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                            Credit
-                          </Typography>
-                        }
-                      />
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={transactionTypes.includes('debit')}
-                            onChange={handleDebitToggle}
-                            size="small"
-                            sx={{
-                              '& .MuiSwitch-switchBase.Mui-checked': {
-                                color: '#f44336',
-                              },
-                              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                backgroundColor: '#f44336',
-                              },
-                            }}
-                          />
-                        }
-                        label={
-                          <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                            Debit
-                          </Typography>
-                        }
-                      />
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<DownloadIcon />}
-                        onClick={downloadCSV}
-                        disabled={filteredTransactions.length === 0}
-                        sx={{ 
-                          bgcolor: '#4caf50',
-                          '&:hover': { bgcolor: '#45a049' },
-                          fontSize: { xs: '0.7rem', sm: '0.8rem' }
-                        }}
-                      >
-                        CSV
-                      </Button>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<TableViewIcon />}
-                        onClick={downloadExcel}
-                        disabled={filteredTransactions.length === 0}
-                        sx={{ 
-                          bgcolor: '#2196f3',
-                          '&:hover': { bgcolor: '#1976d2' },
-                          fontSize: { xs: '0.7rem', sm: '0.8rem' }
-                        }}
-                      >
-                        Excel
-                      </Button>
-                    </Box>
-                  </Box>
-
-                  <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                    <InputLabel>Date Filter</InputLabel>
-                    <Select
-                      value={dateFilter}
-                      onChange={handleDateFilterChange}
-                      label="Date Filter"
-                    >
-                      <MenuItem value="all">All Transactions</MenuItem>
-                      <MenuItem value="today">Today</MenuItem>
-                      <MenuItem value="yesterday">Yesterday</MenuItem>
-                      <MenuItem value="thisWeek">This Week</MenuItem>
-                      <MenuItem value="lastWeek">Last Week</MenuItem>
-                      <MenuItem value="custom">Custom Date Range</MenuItem>
-                    </Select>
-                  </FormControl>
-
-                  {dateFilter === 'custom' && (
-                    <Grid container spacing={2} sx={{ mb: 2 }}>
-                      <Grid item xs={6}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="Start Date"
-                          type="date"
-                          value={customStartDate}
-                          onChange={(e) => setCustomStartDate(e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      </Grid>
-                      <Grid item xs={6}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="End Date"
-                          type="date"
-                          value={customEndDate}
-                          onChange={(e) => setCustomEndDate(e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      </Grid>
-                    </Grid>
-                  )}
-
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Payment Mode</InputLabel>
-                    <Select
-                      value={selectedPaymentMode}
-                      onChange={handlePaymentModeChange}
-                      label="Payment Mode"
-                    >
-                      <MenuItem value="all">All Payment Modes</MenuItem>
-                      {paymentModes.map((mode) => (
-                        <MenuItem key={mode} value={mode}>
-                          {mode}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Box>
-              </TabPanel>
-
-              {/* Bank Account Filter Tab */}
-              <TabPanel value={tabValue} index={0}>
-                <Box sx={{ mb: 3 }}>
-                  {/* Credit/Debit Switches and Download Buttons */}
-                  <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 2 }}>
-                    <Box sx={{ display: 'flex', gap: 2 }}>
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={transactionTypes.includes('credit')}
-                            onChange={handleCreditToggle}
-                            size="small"
-                            sx={{
-                              '& .MuiSwitch-switchBase.Mui-checked': {
-                                color: '#4caf50',
-                              },
-                              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                backgroundColor: '#4caf50',
-                              },
-                            }}
-                          />
-                        }
-                        label={
-                          <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                            Credit
-                          </Typography>
-                        }
-                      />
-                      <FormControlLabel
-                        control={
-                          <Switch
-                            checked={transactionTypes.includes('debit')}
-                            onChange={handleDebitToggle}
-                            size="small"
-                            sx={{
-                              '& .MuiSwitch-switchBase.Mui-checked': {
-                                color: '#f44336',
-                              },
-                              '& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track': {
-                                backgroundColor: '#f44336',
-                              },
-                            }}
-                          />
-                        }
-                        label={
-                          <Typography sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                            Debit
-                          </Typography>
-                        }
-                      />
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 1 }}>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<DownloadIcon />}
-                        onClick={downloadCSV}
-                        disabled={filteredTransactions.length === 0}
-                        sx={{ 
-                          bgcolor: '#4caf50',
-                          '&:hover': { bgcolor: '#45a049' },
-                          fontSize: { xs: '0.7rem', sm: '0.8rem' }
-                        }}
-                      >
-                        CSV
-                      </Button>
-                      <Button
-                        variant="contained"
-                        size="small"
-                        startIcon={<TableViewIcon />}
-                        onClick={downloadExcel}
-                        disabled={filteredTransactions.length === 0}
-                        sx={{ 
-                          bgcolor: '#2196f3',
-                          '&:hover': { bgcolor: '#1976d2' },
-                          fontSize: { xs: '0.7rem', sm: '0.8rem' }
-                        }}
-                      >
-                        Excel
-                      </Button>
-                    </Box>
-                  </Box>
-
-                  <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                    <InputLabel>Bank Account</InputLabel>
-                    <Select
-                      value={selectedBankAccount}
-                      onChange={handleBankAccountChange}
-                      label="Bank Account"
-                    >
-                      <MenuItem value="all">All Accounts</MenuItem>
-                      {bankAccounts.map((account) => (
-                        <MenuItem key={account} value={account}>
-                          {account}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-
-                  <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-                    <InputLabel>Date Filter</InputLabel>
-                    <Select
-                      value={dateFilter}
-                      onChange={handleDateFilterChange}
-                      label="Date Filter"
-                    >
-                      <MenuItem value="all">All Transactions</MenuItem>
-                      <MenuItem value="today">Today</MenuItem>
-                      <MenuItem value="yesterday">Yesterday</MenuItem>
-                      <MenuItem value="thisWeek">This Week</MenuItem>
-                      <MenuItem value="lastWeek">Last Week</MenuItem>
-                      <MenuItem value="custom">Custom Date Range</MenuItem>
-                    </Select>
-                  </FormControl>
-
-                  {dateFilter === 'custom' && (
-                    <Grid container spacing={2}>
-                      <Grid item xs={6}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="Start Date"
-                          type="date"
-                          value={customStartDate}
-                          onChange={(e) => setCustomStartDate(e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      </Grid>
-                      <Grid item xs={6}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          label="End Date"
-                          type="date"
-                          value={customEndDate}
-                          onChange={(e) => setCustomEndDate(e.target.value)}
-                          InputLabelProps={{ shrink: true }}
-                        />
-                      </Grid>
-                    </Grid>
-                  )}
-                </Box>
-              </TabPanel>
-
-              {/* Transactions Table */}
-              {transactionsLoading ? (
-                <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                  <CircularProgress />
-                </Box>
-              ) : filteredTransactions.length === 0 ? (
-                <Alert severity="info">
-                  No transactions found for the selected filters.
-                </Alert>
-              ) : (
-                <TableContainer 
-                  component={Paper} 
-                  elevation={0} 
-                  sx={{ 
-                    maxHeight: { xs: 400, sm: 500 },
-                    border: '1px solid #e0e0e0'
-                  }}
-                >
-                  <Table stickyHeader size="small">
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ 
-                          fontWeight: 700, 
-                          fontSize: { xs: '0.65rem', sm: '0.75rem' },
-                          bgcolor: '#ffffff',
-                          py: { xs: 0.5, sm: 1 }
-                        }}>
-                          Date
-                        </TableCell>
-                        <TableCell 
-                          align="right" 
-                          sx={{ 
-                            fontWeight: 700, 
-                            fontSize: { xs: '0.65rem', sm: '0.75rem' },
-                            bgcolor: '#ffffff',
-                            py: { xs: 0.5, sm: 1 }
-                          }}
-                        >
-                          Amount
-                        </TableCell>
-                        <TableCell sx={{ 
-                          fontWeight: 700, 
-                          fontSize: { xs: '0.65rem', sm: '0.75rem' },
-                          bgcolor: '#ffffff',
-                          py: { xs: 0.5, sm: 1 }
-                        }}>
-                          Description
-                        </TableCell>
-                        <TableCell sx={{ 
-                          fontWeight: 700, 
-                          fontSize: { xs: '0.65rem', sm: '0.75rem' },
-                          bgcolor: '#ffffff',
-                          py: { xs: 0.5, sm: 1 }
-                        }}>
-                          Bank Account
-                        </TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {filteredTransactions.map((transaction) => (
-                        <TableRow 
-                          key={transaction.id}
-                          sx={{ 
-                            '&:hover': { bgcolor: '#f9f9f9' },
-                            bgcolor: '#ffffff'
-                          }}
-                        >
-                          <TableCell sx={{ 
-                            fontSize: { xs: '0.65rem', sm: '0.75rem' },
-                            py: { xs: 0.75, sm: 1 }
-                          }}>
-                            {formatDate(transaction.date)}
-                          </TableCell>
-                          <TableCell 
-                            align="right" 
-                            sx={{ 
-                              fontSize: { xs: '0.65rem', sm: '0.75rem' },
-                              fontWeight: 600,
-                              py: { xs: 0.75, sm: 1 },
-                              color: transaction.type === 'income' ? '#4caf50' : '#f44336'
-                            }}
-                          >
-                            {formatCurrencyWithOriginal(transaction.amount, transaction.currency, true)}
-                          </TableCell>
-                          <TableCell sx={{ 
-                            fontSize: { xs: '0.65rem', sm: '0.75rem' },
-                            py: { xs: 0.75, sm: 1 },
-                            maxWidth: { xs: 150, sm: 300 }
-                          }}>
-                            {transaction.transactionDesc || transaction.description || 'N/A'}
-                          </TableCell>
-                          <TableCell sx={{ 
-                            fontSize: { xs: '0.65rem', sm: '0.75rem' },
-                            py: { xs: 0.75, sm: 1 }
-                          }}>
-                            {transaction.accountName || 'Cash'}
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-              )}
-            </>
-          )}
-        </Paper>
+                ))}
+              </Box>
+            )}
+          </>
+        )}
       </Box>
       <Footer />
     </Box>
@@ -1326,4 +750,3 @@ function ReportPage() {
 }
 
 export default ReportPage;
-

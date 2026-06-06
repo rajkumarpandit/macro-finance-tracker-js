@@ -29,9 +29,9 @@ Extract and return ONLY a valid JSON object with these exact fields:
 {
   "amount": (number - the transaction amount, REQUIRED),
   "currency": (string - "INR", "USD", etc. Default to "INR" if not specified or rupees mentioned),
-  "type": (string - "expense" or "income". Default to "expense" if words like "spent", "paid", "received", "earned" are not mentioned),
-  "category": (string - for expense: transportation, groceries, food, entertainment, utilities, healthcare, shopping, education, household, rent, fuel, sundry. For income: salary, freelance, business, rental, investment, dividend, gift, other. Default to "sundry" if cannot be determined),
-  "expenseHead": (string - HIGH-LEVEL category for analytics. For expenses: Household Expenses (groceries, household items, utilities), Education (school fees, books, courses), Transportation (fuel, taxi, auto), Healthcare (medicines, doctor fees), Food & Dining (restaurants, food delivery), Entertainment (movies, games, subscriptions), Shopping (clothes, electronics), Investment (mutual funds, stocks), Bills & Utilities (electricity, water, internet), Other. For income: Salary, Business Income, Investment Returns, Other Income),
+  "type": (string - "expense" or "income". Set to "income" if words like "received", "earned", "credited", "got", "salary" are present. Set to "expense" if words like "spent", "paid", "purchased", "bought" are present. Default to "expense" if unclear),
+  "category": (string - for expense: transportation, groceries, food, entertainment, utilities, healthcare, shopping, education, household, rent, fuel, sundry. For income: Fixed, NonFixed. Default to "sundry" for expenses or "Fixed" for income),
+  "expenseHead": (string - For expenses: Household Expenses, Education, Transportation, Healthcare, Food & Dining, Entertainment, Shopping, Investment, Bills & Utilities, Other. For income: Salary, Interest-Income, Dividend, Others. Default to "Other" for expenses or "Salary" for income),
   "transactionDesc": (string - brief description of what the transaction was for. Extract the key purpose/item/place like "BigMarket", "frying pan", "BigBazaar", "groceries". Keep it short and meaningful for user to identify the transaction),
   "date": (string - ISO date format YYYY-MM-DD, use today's date if not specified),
   "paymentMode": (string - UPI, Credit Card, Debit Card, Cash, Net Banking, Wallet. Default to "UPI" if not specified)
@@ -40,9 +40,9 @@ Extract and return ONLY a valid JSON object with these exact fields:
 Rules:
 - Amount is REQUIRED, must be a number
 - Currency defaults to "INR"
-- Type defaults to "expense" if not clear from context
-- Category defaults to "sundry" if cannot be determined
-- ExpenseHead is the HIGH-LEVEL grouping (e.g., groceries -> "Household Expenses", school fee -> "Education")
+- Type should be "income" if words like "received", "earned", "credited", "got", "salary" are present, otherwise "expense"
+- Category defaults to "sundry" for expenses, "Fixed" for income
+- ExpenseHead defaults to "Other" for expenses, "Salary" for income
 - TransactionDesc should be a brief, meaningful description (e.g., "BigMarket", "frying pan", "groceries", "taxi")
 - Payment mode defaults to "UPI"
 - Use today's date if not specified: ${new Date().toISOString().split('T')[0]}
@@ -108,8 +108,8 @@ Rules:
       amount: parsed.amount,
       currency: parsed.currency || 'INR',
       type: parsed.type || 'expense',
-      category: parsed.category || 'sundry',
-      expenseHead: parsed.expenseHead || 'Other',
+      category: parsed.category || (parsed.type === 'income' ? 'Fixed' : 'sundry'),
+      expenseHead: parsed.expenseHead || (parsed.type === 'income' ? 'Salary' : 'Other'),
       transactionDesc: parsed.transactionDesc || '',
       date: parsed.date || new Date().toISOString().split('T')[0],
       paymentMode: parsed.paymentMode || 'UPI'
