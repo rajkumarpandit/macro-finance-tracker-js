@@ -55,25 +55,25 @@ function TransactionRow({ t, idx, totalInGroup, onEdit, onDelete }) {
       <Box
         onClick={() => setExpanded(!expanded)}
         sx={{
-          display: 'flex', alignItems: 'center', px: 2, py: '11px',
+          display: 'flex', alignItems: 'center', px: 2, py: '7px',
           borderBottom: (expanded || idx < totalInGroup - 1) ? '1px solid #f5f5f5' : 'none',
           cursor: 'pointer', '&:active': { bgcolor: '#f9fafb' }, transition: 'background 0.1s',
           bgcolor: expanded ? '#fafafa' : '#fff'
         }}
       >
-        <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: isExpense ? '#dc2626' : '#16a34a', flexShrink: 0, mr: 1.5 }} />
+        <Box sx={{ width: 7, height: 7, borderRadius: '50%', bgcolor: isExpense ? '#dc2626' : '#16a34a', flexShrink: 0, mr: 1.25 }} />
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          <Typography sx={{ fontSize: '0.85rem', fontWeight: 400, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          <Typography sx={{ fontSize: '0.78rem', fontWeight: 400, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
             {t.transactionDesc || t.description || 'N/A'}
           </Typography>
           {t.expenseHead && (
-            <Typography sx={{ fontSize: '0.62rem', color: '#9ca3af', mt: '1px' }}>{t.expenseHead}</Typography>
+            <Typography sx={{ fontSize: '0.58rem', color: '#9ca3af', mt: '1px' }}>{t.expenseHead}</Typography>
           )}
         </Box>
-        <Typography fontWeight="700" sx={{ fontSize: '0.9rem', ml: 1, color: isExpense ? '#dc2626' : '#16a34a', flexShrink: 0 }}>
+        <Typography sx={{ fontSize: '0.82rem', ml: 1, color: isExpense ? '#dc2626' : '#16a34a', flexShrink: 0 }}>
           {isExpense ? '−' : '+'}{formatAmt(t.amount, t.currency)}
         </Typography>
-        <Typography sx={{ fontSize: '0.65rem', color: '#d1d5db', ml: '6px', transition: 'transform 0.15s', display: 'inline-block', transform: expanded ? 'rotate(180deg)' : 'none' }}>▼</Typography>
+        <Typography sx={{ fontSize: '0.6rem', color: '#d1d5db', ml: '6px', transition: 'transform 0.15s', display: 'inline-block', transform: expanded ? 'rotate(180deg)' : 'none' }}>▼</Typography>
       </Box>
       {expanded && (
         <Box sx={{ px: 2, py: 1.25, bgcolor: '#f9fafb', borderBottom: idx < totalInGroup - 1 ? '1px solid #f0f0f0' : 'none' }}>

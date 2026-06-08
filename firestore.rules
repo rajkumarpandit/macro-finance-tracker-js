@@ -220,31 +220,5 @@ service cloud.firestore {
       allow write: if isSignedIn();
     }
     
-    // Mutual Fund API Configurations - admin only
-    match /mf_api_configurations/{configId} {
-      // Only admins can read and manage API configurations
-      allow read, write: if isAdmin();
-    }
-    
-    // Mutual Fund Sync Logs - admin only
-    match /mf_sync_logs/{logId} {
-      // Only admins can read and write sync logs
-      allow read, write: if isAdmin();
-    }
-    
-    // Mutual Fund Sync Jobs - admin only (job history tracking)
-    match /mf_sync_jobs/{jobId} {
-      // Only admins can read and write job history
-      allow read, write: if isAdmin();
-    }
-    
-    // Mutual Funds Database - read by all authenticated users, write by admins only
-    match /mutual_funds/{fundId} {
-      // All authenticated users can read mutual funds data
-      allow read: if isSignedIn();
-      
-      // Only admins can add/update/delete mutual funds data
-      allow write: if isAdmin();
-    }
   }
 }

@@ -38,7 +38,6 @@ import RepeatIcon from '@mui/icons-material/Repeat';
 import CurrencyExchangeIcon from '@mui/icons-material/CurrencyExchange';
 import FolderSharedIcon from '@mui/icons-material/FolderShared';
 import AssessmentIcon from '@mui/icons-material/Assessment';
-import StorageIcon from '@mui/icons-material/Storage';
 
 // Import authentication components
 import { AuthProvider, useAuth } from './components/Auth/AuthContext';
@@ -65,7 +64,6 @@ const RecurringTransactionSetup = lazy(() => import('./components/RecurringTrans
 const CurrencyManager = lazy(() => import('./components/Currency/CurrencyManager'));
 const MasterRecords = lazy(() => import('./components/MasterRecords/MasterRecords'));
 const RiskProfile = lazy(() => import('./components/Profile/RiskProfile'));
-const MutualFundDataManager = lazy(() => import('./components/Admin/MutualFundDataManager'));
 
 // TODO: Create these finance-specific components
 // const ExpensesPage = lazy(() => import('./components/Expenses/ExpensesPage'));
@@ -342,7 +340,6 @@ function SidebarDrawer({ open, onClose }) {
   if (userIsAdmin) {
     menuItems.push({ text: 'Admin', icon: <SupervisorAccountIcon />, path: '/admin' });
     menuItems.push({ text: 'Currency Manager', icon: <CurrencyExchangeIcon />, path: '/currency-manager' });
-    menuItems.push({ text: 'MF Data Manager', icon: <StorageIcon />, path: '/mf-data-manager' });
   }
   
   return (
@@ -569,12 +566,6 @@ function AppRoutes({ currentUser }) {
               <Route path="/admin" element={
                 <PrivateRoute requireAdmin={true}>
                   <AdminPage />
-                </PrivateRoute>
-              } />
-              
-              <Route path="/mf-data-manager" element={
-                <PrivateRoute requireAdmin={true}>
-                  <MutualFundDataManager />
                 </PrivateRoute>
               } />
               

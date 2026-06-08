@@ -17,7 +17,7 @@ import {
 } from '@mui/material';
 import AssessmentIcon from '@mui/icons-material/Assessment';
 import BookIcon from '@mui/icons-material/Book';
-import TodayIcon from '@mui/icons-material/Today';
+
 import CategoryIcon from '@mui/icons-material/Category';
 import PaymentIcon from '@mui/icons-material/Payment';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -260,27 +260,25 @@ function ReportPage() {
       });
     }
 
+    // Always apply date filter regardless of active tab
+    const dateRange = getDateRangeForFilter(dateFilter);
+    if (dateRange) {
+      filtered = filtered.filter(t => {
+        const transactionDate = t.date || new Date(0);
+        return transactionDate >= dateRange.start && transactionDate <= dateRange.end;
+      });
+    }
+
+    // Tab-specific filter: 0=Account, 1=Category, 2=Payment
     if (tabValue === 0) {
-      // Bank Account filtering (index 0)
       if (selectedBankAccount !== 'all') {
         filtered = filtered.filter(t => t.accountName === selectedBankAccount);
       }
     } else if (tabValue === 1) {
-      // Date-based filtering (index 1)
-      const dateRange = getDateRangeForFilter(dateFilter);
-      if (dateRange) {
-        filtered = filtered.filter(t => {
-          const transactionDate = t.date || new Date(0);
-          return transactionDate >= dateRange.start && transactionDate <= dateRange.end;
-        });
-      }
-    } else if (tabValue === 2) {
-      // Expense Head filtering (index 2)
       if (selectedExpenseHead !== 'all') {
         filtered = filtered.filter(t => t.expenseHead === selectedExpenseHead);
       }
-    } else if (tabValue === 3) {
-      // Payment Mode filtering (index 3)
+    } else if (tabValue === 2) {
       if (selectedPaymentMode !== 'all') {
         filtered = filtered.filter(t => t.paymentMode === selectedPaymentMode);
       }
@@ -303,7 +301,7 @@ function ReportPage() {
       .filter(t => t.type === 'expense' && (t.expenseHead === 'Investment' || t.category === 'Investment'))
       .reduce((sum, t) => sum + convertToINR(t.amount || 0, t.currency), 0);
     
-    return { income, expenses, investment, count: filteredTransactions.length };
+    return { income, expenses, investment, count: filteredTransactions.length, net: income - expenses };
   }, [filteredTransactions]);
 
   const formatCurrency = (amount) => {
@@ -358,6 +356,18 @@ function ReportPage() {
   const handleBankAccountChange = (event) => {
     setSelectedBankAccount(event.target.value);
   };
+
+  const handleClearFilters = () => {
+    setDateFilter('all');
+    setCustomStartDate('');
+    setCustomEndDate('');
+    setSelectedExpenseHead('all');
+    setSelectedPaymentMode('all');
+    setSelectedBankAccount('all');
+    setTransactionTypes(['credit', 'debit']);
+  };
+
+  const hasActiveFilters = dateFilter !== 'all' || selectedExpenseHead !== 'all' || selectedPaymentMode !== 'all' || selectedBankAccount !== 'all' || transactionTypes.length !== 2;
 
   // Download functions
   const downloadCSV = () => {
@@ -441,52 +451,71 @@ function ReportPage() {
 
   // ── Shared Credit/Debit pill toggles + Download buttons ──
   const FilterToolbar = () => (
-    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2, flexWrap: 'wrap', gap: 1 }}>
-      <Box sx={{ display: 'flex', gap: '6px' }}>
-        <Box
-          onClick={handleCreditToggle.bind(null, { target: { checked: !transactionTypes.includes('credit') } })}
-          sx={{
-            px: 1.5, py: '5px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700,
-            border: `1.5px solid ${transactionTypes.includes('credit') ? '#16a34a' : '#d1d5db'}`,
-            bgcolor: transactionTypes.includes('credit') ? '#dcfce7' : '#f9fafb',
-            color: transactionTypes.includes('credit') ? '#16a34a' : '#9ca3af',
-            transition: 'all 0.15s', userSelect: 'none',
-            display: 'flex', alignItems: 'center', gap: '4px'
-          }}
-        >
-          ▲ Credit
-        </Box>
-        <Box
-          onClick={handleDebitToggle.bind(null, { target: { checked: !transactionTypes.includes('debit') } })}
-          sx={{
-            px: 1.5, py: '5px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 700,
-            border: `1.5px solid ${transactionTypes.includes('debit') ? '#dc2626' : '#d1d5db'}`,
-            bgcolor: transactionTypes.includes('debit') ? '#fee2e2' : '#f9fafb',
-            color: transactionTypes.includes('debit') ? '#dc2626' : '#9ca3af',
-            transition: 'all 0.15s', userSelect: 'none',
-            display: 'flex', alignItems: 'center', gap: '4px'
-          }}
-        >
-          ▼ Debit
-        </Box>
+    <Box sx={{ mb: 2 }}>
+      {/* Count + net summary line */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+        <Typography sx={{ fontSize: '0.72rem', color: '#6b7280' }}>
+          {filteredTransactions.length} transaction{filteredTransactions.length !== 1 ? 's' : ''}
+          {' · '}
+          <Box component="span" sx={{ color: summary.net >= 0 ? '#15803d' : '#b91c1c', fontWeight: 600 }}>
+            Net {summary.net >= 0 ? '+' : ''}{formatCurrency(summary.net)}
+          </Box>
+        </Typography>
+        {hasActiveFilters && (
+          <Typography onClick={handleClearFilters}
+            sx={{ fontSize: '0.72rem', color: '#9ca3af', cursor: 'pointer', '&:hover': { color: '#374151' } }}>
+            Clear filters
+          </Typography>
+        )}
       </Box>
-      <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-        <IconButton size="small" onClick={handleRefresh} disabled={transactionsLoading} title="Refresh"
-          sx={{ color: '#9ca3af', '&:hover': { color: '#374151' } }}>
-          <RefreshIcon sx={{ fontSize: 18 }} />
-        </IconButton>
-        <Button size="small" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />} onClick={downloadCSV}
-          disabled={filteredTransactions.length === 0}
-          sx={{ fontSize: '0.72rem', fontWeight: 700, bgcolor: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0',
-            borderRadius: '8px', py: '4px', px: 1.25, '&:hover': { bgcolor: '#dcfce7' }, textTransform: 'none', minWidth: 0 }}>
-          CSV
-        </Button>
-        <Button size="small" startIcon={<TableViewIcon sx={{ fontSize: 14 }} />} onClick={downloadExcel}
-          disabled={filteredTransactions.length === 0}
-          sx={{ fontSize: '0.72rem', fontWeight: 700, bgcolor: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe',
-            borderRadius: '8px', py: '4px', px: 1.25, '&:hover': { bgcolor: '#dbeafe' }, textTransform: 'none', minWidth: 0 }}>
-          Excel
-        </Button>
+      {/* Pill toggles + downloads */}
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: '6px' }}>
+          <Box
+            onClick={handleCreditToggle.bind(null, { target: { checked: !transactionTypes.includes('credit') } })}
+            sx={{
+              px: 1.5, py: '5px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+              border: `1.5px solid ${transactionTypes.includes('credit') ? '#86efac' : '#e5e7eb'}`,
+              bgcolor: transactionTypes.includes('credit') ? '#ecfdf5' : '#f9fafb',
+              color: transactionTypes.includes('credit') ? '#166534' : '#9ca3af',
+              transition: 'all 0.15s', userSelect: 'none',
+              display: 'flex', alignItems: 'center', gap: '4px'
+            }}
+          >
+            ▲ Credit
+          </Box>
+          <Box
+            onClick={handleDebitToggle.bind(null, { target: { checked: !transactionTypes.includes('debit') } })}
+            sx={{
+              px: 1.5, py: '5px', borderRadius: '20px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 600,
+              border: `1.5px solid ${transactionTypes.includes('debit') ? '#fca5a5' : '#e5e7eb'}`,
+              bgcolor: transactionTypes.includes('debit') ? '#fff1f2' : '#f9fafb',
+              color: transactionTypes.includes('debit') ? '#991b1b' : '#9ca3af',
+              transition: 'all 0.15s', userSelect: 'none',
+              display: 'flex', alignItems: 'center', gap: '4px'
+            }}
+          >
+            ▼ Debit
+          </Box>
+        </Box>
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <IconButton size="small" onClick={handleRefresh} disabled={transactionsLoading} title="Refresh"
+            sx={{ color: '#9ca3af', '&:hover': { color: '#374151' } }}>
+            <RefreshIcon sx={{ fontSize: 18 }} />
+          </IconButton>
+          <Button size="small" startIcon={<DownloadIcon sx={{ fontSize: 14 }} />} onClick={downloadCSV}
+            disabled={filteredTransactions.length === 0}
+            sx={{ fontSize: '0.72rem', fontWeight: 600, bgcolor: '#f9fafb', color: '#374151', border: '1px solid #e5e7eb',
+              borderRadius: '8px', py: '4px', px: 1.25, '&:hover': { bgcolor: '#f3f4f6' }, textTransform: 'none', minWidth: 0 }}>
+            CSV
+          </Button>
+          <Button size="small" startIcon={<TableViewIcon sx={{ fontSize: 14 }} />} onClick={downloadExcel}
+            disabled={filteredTransactions.length === 0}
+            sx={{ fontSize: '0.72rem', fontWeight: 600, bgcolor: '#f9fafb', color: '#374151', border: '1px solid #e5e7eb',
+              borderRadius: '8px', py: '4px', px: 1.25, '&:hover': { bgcolor: '#f3f4f6' }, textTransform: 'none', minWidth: 0 }}>
+            Excel
+          </Button>
+        </Box>
       </Box>
     </Box>
   );
@@ -586,7 +615,7 @@ function ReportPage() {
                 { label: 'Income', value: formatCurrency(summary.income), color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0', icon: <TrendingUpIcon sx={{ fontSize: 16, color: '#16a34a' }} /> },
                 { label: 'Expenses', value: formatCurrency(summary.expenses), color: '#dc2626', bg: '#fff5f5', border: '#fecaca', icon: <TrendingDownIcon sx={{ fontSize: 16, color: '#dc2626' }} /> },
                 { label: 'Investment', value: formatCurrency(summary.investment), color: '#0f766e', bg: '#f0fdfa', border: '#99f6e4', icon: <SavingsIcon sx={{ fontSize: 16, color: '#0f766e' }} /> },
-                { label: 'Records', value: `${summary.count}`, color: '#1d4ed8', bg: '#eff6ff', border: '#bfdbfe', icon: <AssessmentIcon sx={{ fontSize: 16, color: '#1d4ed8' }} /> },
+                { label: 'Net', value: `${summary.net >= 0 ? '+' : ''}${formatCurrency(summary.net)}`, color: summary.net >= 0 ? '#15803d' : '#b91c1c', bg: summary.net >= 0 ? '#f0fdf4' : '#fff1f2', border: summary.net >= 0 ? '#86efac' : '#fca5a5', icon: summary.net >= 0 ? <TrendingUpIcon sx={{ fontSize: 16, color: '#15803d' }} /> : <TrendingDownIcon sx={{ fontSize: 16, color: '#b91c1c' }} /> },
               ].map(({ label, value, color, bg, border, icon }) => (
                 <Grid item xs={6} key={label}>
                   <Box sx={{ bgcolor: bg, border: `1.5px solid ${border}`, borderRadius: '12px', p: '10px 12px', height: '68px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -602,15 +631,19 @@ function ReportPage() {
               ))}
             </Grid>
 
+            {/* ── Date Filter ── */}
+            <Box sx={{ bgcolor: '#fff', borderRadius: '14px', border: '1px solid #e8ecf0', mb: 2, p: 1.5 }}>
+              <DateFilterForm />
+            </Box>
+
             {/* ── Filter Card ── */}
             <Box sx={{ bgcolor: '#fff', borderRadius: '14px', border: '1px solid #e8ecf0', mb: 2, overflow: 'hidden' }}>
               {/* Tab strip */}
               <Box sx={{ display: 'flex', borderBottom: '1px solid #f0f0f0', bgcolor: '#fafafa' }}>
                 {[
                   { index: 0, icon: <SavingsIcon sx={{ fontSize: 15 }} />, label: 'Account' },
-                  { index: 1, icon: <TodayIcon sx={{ fontSize: 15 }} />, label: 'Date' },
-                  { index: 2, icon: <CategoryIcon sx={{ fontSize: 15 }} />, label: 'Category' },
-                  { index: 3, icon: <PaymentIcon sx={{ fontSize: 15 }} />, label: 'Payment' },
+                  { index: 1, icon: <CategoryIcon sx={{ fontSize: 15 }} />, label: 'Category' },
+                  { index: 2, icon: <PaymentIcon sx={{ fontSize: 15 }} />, label: 'Payment' },
                 ].map(({ index, icon, label }) => (
                   <Box key={index} onClick={() => handleTabChange(null, index)} sx={{
                     flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px',
@@ -629,45 +662,35 @@ function ReportPage() {
               {/* Filter controls for active tab */}
               <Box sx={{ p: 1.5, pt: 1.25 }}>
                 {tabValue === 0 && (
-                  <>
-                    <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
-                      <InputLabel>Bank Account</InputLabel>
-                      <Select value={selectedBankAccount} onChange={handleBankAccountChange} label="Bank Account">
-                        <MenuItem value="all">All Accounts</MenuItem>
-                        {(selectedLedgerData?.accountBalances || []).filter(a => a.accountId).map((account) => (
-                          <MenuItem key={account.accountId} value={account.accountId}>
-                            {account.accountName || account.accountId}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                    <DateFilterForm />
-                  </>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Bank Account</InputLabel>
+                    <Select value={selectedBankAccount} onChange={handleBankAccountChange} label="Bank Account">
+                      <MenuItem value="all">All Accounts</MenuItem>
+                      {(selectedLedgerData?.accountBalances || []).filter(a => a.accountId).map((account) => (
+                        <MenuItem key={account.accountId} value={account.accountId}>
+                          {account.accountName || account.accountId}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 )}
-                {tabValue === 1 && <DateFilterForm />}
+                {tabValue === 1 && (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Expense Category</InputLabel>
+                    <Select value={selectedExpenseHead} onChange={handleExpenseHeadChange} label="Expense Category">
+                      <MenuItem value="all">All Categories</MenuItem>
+                      {expenseHeads.map((head) => <MenuItem key={head} value={head}>{head}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                )}
                 {tabValue === 2 && (
-                  <>
-                    <FormControl fullWidth size="small" sx={{ mb: 1.5 }}>
-                      <InputLabel>Expense Category</InputLabel>
-                      <Select value={selectedExpenseHead} onChange={handleExpenseHeadChange} label="Expense Category">
-                        <MenuItem value="all">All Categories</MenuItem>
-                        {expenseHeads.map((head) => <MenuItem key={head} value={head}>{head}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                    <DateFilterForm />
-                  </>
-                )}
-                {tabValue === 3 && (
-                  <>
-                    <DateFilterForm />
-                    <FormControl fullWidth size="small" sx={{ mt: 1.5 }}>
-                      <InputLabel>Payment Mode</InputLabel>
-                      <Select value={selectedPaymentMode} onChange={handlePaymentModeChange} label="Payment Mode">
-                        <MenuItem value="all">All Modes</MenuItem>
-                        {paymentModes.map((mode) => <MenuItem key={mode} value={mode}>{mode}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Payment Mode</InputLabel>
+                    <Select value={selectedPaymentMode} onChange={handlePaymentModeChange} label="Payment Mode">
+                      <MenuItem value="all">All Modes</MenuItem>
+                      {paymentModes.map((mode) => <MenuItem key={mode} value={mode}>{mode}</MenuItem>)}
+                    </Select>
+                  </FormControl>
                 )}
               </Box>
             </Box>
@@ -696,44 +719,44 @@ function ReportPage() {
                 {/* Transaction rows */}
                 {filteredTransactions.map((t, idx) => (
                   <Box key={t.id} sx={{
-                    display: 'flex', alignItems: 'center', px: 2, py: '10px',
+                    display: 'flex', alignItems: 'center', px: 2, py: '6px',
                     borderBottom: idx < filteredTransactions.length - 1 ? '1px solid #f5f5f5' : 'none',
                     '&:hover': { bgcolor: '#fafafa' }, transition: 'background 0.1s'
                   }}>
                     {/* Date */}
-                    <Box sx={{ flex: '0 0 72px' }}>
-                      <Typography sx={{ fontSize: '0.72rem', color: '#374151', fontWeight: 500, lineHeight: 1.3 }}>
+                    <Box sx={{ flex: '0 0 62px' }}>
+                      <Typography sx={{ fontSize: '0.67rem', color: '#374151', fontWeight: 500, lineHeight: 1.3 }}>
                         {t.date ? t.date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'N/A'}
                       </Typography>
-                      <Typography sx={{ fontSize: '0.62rem', color: '#9ca3af' }}>
+                      <Typography sx={{ fontSize: '0.58rem', color: '#9ca3af' }}>
                         {t.date ? t.date.getFullYear() : ''}
                       </Typography>
                     </Box>
                     {/* Description + tags */}
                     <Box sx={{ flex: 1, minWidth: 0, pr: 1 }}>
-                      <Typography sx={{ fontSize: '0.82rem', color: '#111827', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      <Typography sx={{ fontSize: '0.75rem', color: '#111827', fontWeight: 400, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {t.transactionDesc || t.description || 'N/A'}
                       </Typography>
-                      <Box sx={{ display: 'flex', gap: '4px', mt: '3px', flexWrap: 'wrap' }}>
+                      <Box sx={{ display: 'flex', gap: '3px', mt: '2px', flexWrap: 'wrap' }}>
                         {t.expenseHead && (
-                          <Typography sx={{ fontSize: '0.62rem', color: '#6b7280', bgcolor: '#f3f4f6', px: '6px', py: '1px', borderRadius: '10px' }}>
+                          <Typography sx={{ fontSize: '0.58rem', color: '#6b7280', bgcolor: '#f3f4f6', px: '5px', py: '1px', borderRadius: '10px' }}>
                             {t.expenseHead}
                           </Typography>
                         )}
                         {t.paymentMode && (
-                          <Typography sx={{ fontSize: '0.62rem', color: '#6b7280', bgcolor: '#f3f4f6', px: '6px', py: '1px', borderRadius: '10px' }}>
+                          <Typography sx={{ fontSize: '0.58rem', color: '#6b7280', bgcolor: '#f3f4f6', px: '5px', py: '1px', borderRadius: '10px' }}>
                             {t.paymentMode}
                           </Typography>
                         )}
                         {t.accountName && (
-                          <Typography sx={{ fontSize: '0.62rem', color: '#9ca3af' }}>{t.accountName}</Typography>
+                          <Typography sx={{ fontSize: '0.58rem', color: '#9ca3af' }}>{t.accountName}</Typography>
                         )}
                       </Box>
                     </Box>
                     {/* Amount */}
-                    <Typography fontWeight="700" sx={{
-                      flex: '0 0 80px', textAlign: 'right', fontSize: '0.85rem',
-                      color: t.type === 'income' ? '#16a34a' : '#dc2626'
+                    <Typography sx={{
+                      flex: '0 0 76px', textAlign: 'right', fontSize: '0.78rem',
+                      color: t.type === 'income' ? '#16a34a' : (t.expenseHead === 'Investment' || t.category === 'Investment') ? '#0f766e' : '#dc2626'
                     }}>
                       {t.type === 'income' ? '+' : '-'}{formatCurrencyWithOriginal(t.amount, t.currency, true)}
                     </Typography>
