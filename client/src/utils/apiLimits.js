@@ -63,7 +63,7 @@ export async function checkGeminiApiLimit(userId) {
         allowed: false,
         currentCount,
         limit,
-        message: `You've reached your daily limit of ${limit} AI API calls. Please use the dropdown to select food items from your saved database, or save new items for faster future access.`
+        message: `You've reached your daily limit of ${limit} AI API calls. Please add transactions manually using the 'Manual' tab until your limit resets tomorrow.`
       };
     }
 

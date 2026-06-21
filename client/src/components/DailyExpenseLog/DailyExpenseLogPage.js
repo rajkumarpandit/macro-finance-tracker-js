@@ -119,6 +119,7 @@ function DailyExpenseLogPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [tabValue, setTabValue] = useState(0);
+  const [weekTabValue, setWeekTabValue] = useState(0);
   
   // Edit transaction states
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -1849,8 +1850,13 @@ function DailyExpenseLogPage() {
       }
     }
 
-    // 2. Bank accounts — match by bankName field OR by words in accountNickName
+    // 2. Bank accounts — match by last 4 digits of accountNumber, bankName field, OR by words in accountNickName
     for (const bank of bankAccounts) {
+      // Last-4 match: strip all non-digits first, then take last 4
+      const last4 = (bank.accountNumber || '').replace(/\D/g, '').slice(-4);
+      if (last4 && lowerRaw.includes(last4)) {
+        return { accountId: bank.id, accountName: bank.accountNickName || '', paymentMode: 'UPI' };
+      }
       // bankName field match (e.g. "Axis Bank" → word "axis" found in SMS)
       const bankNameWords = sigWords(bank.bankName);
       if (bankNameWords.length > 0 && bankNameWords.some(w => lowerRaw.includes(w))) {
@@ -3614,8 +3620,17 @@ function DailyExpenseLogPage() {
                         {row.raw}
                       </Typography>
                       {row.saved && <Typography sx={{ fontSize: '0.65rem', color: '#16a34a', fontWeight: 700, flexShrink: 0 }}>✓ Saved</Typography>}
-                      {row.error && <Typography sx={{ fontSize: '0.65rem', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>{row.error}</Typography>}
+                      {row.error && <Typography sx={{ fontSize: '0.65rem', color: '#dc2626', fontWeight: 700, flexShrink: 0 }}>⚠️ Failed</Typography>}
                     </Box>
+
+                    {/* Error display */}
+                    {row.error && (
+                      <Box sx={{ px: 2, py: 1.5 }}>
+                        <Alert severity="error" variant="outlined" sx={{ fontSize: '0.72rem', py: 0.5, borderRadius: '8px' }}>
+                          {row.error}
+                        </Alert>
+                      </Box>
+                    )}
 
                     {/* Parsed fields — editable */}
                     {row.parsed && !row.saved && (
@@ -3749,7 +3764,10 @@ function DailyExpenseLogPage() {
           </Box>
         </TabPanel>
 
-      {/* Transaction History - Date Grouped Feed */}
+      {/* ── Separator between Add section and Transaction History ── */}
+      <Box sx={{ mt: 3, mb: 2, borderTop: '1.5px solid #e8ecf0' }} />
+
+      {/* Transaction History - Week-wise Tabbed Feed */}
       {(() => {
         if (transactions.length === 0) {
           return (
@@ -3761,41 +3779,137 @@ function DailyExpenseLogPage() {
           );
         }
 
-        // Group transactions by date label
-        const today = new Date(); today.setHours(0,0,0,0);
-        const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+        // ── Helper: get Monday of the week for a given date string ──
+        const getWeekStart = (dateStr) => {
+          const d = new Date(dateStr); d.setHours(0, 0, 0, 0);
+          const day = d.getDay(); // 0=Sun … 6=Sat
+          const diff = day === 0 ? -6 : 1 - day; // shift to Monday
+          d.setDate(d.getDate() + diff);
+          return d;
+        };
 
-        const getDateLabel = (date) => {
-          const d = new Date(date); d.setHours(0,0,0,0);
-          if (d.getTime() === today.getTime()) return 'Today';
+        const todayDate = new Date(); todayDate.setHours(0, 0, 0, 0);
+        const yesterday = new Date(todayDate); yesterday.setDate(todayDate.getDate() - 1);
+        const thisWeekStart = getWeekStart(todayDate.toISOString());
+
+        // ── Build ordered array of week buckets (newest first) ──
+        const weekMap = {};
+        transactions.forEach(t => {
+          const ws = getWeekStart(t.date);
+          const key = ws.toISOString().split('T')[0];
+          if (!weekMap[key]) {
+            const we = new Date(ws); we.setDate(ws.getDate() + 6);
+            const fmtDay = (d) => d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+            const isThisWeek = ws.getTime() === thisWeekStart.getTime();
+            weekMap[key] = {
+              key,
+              wsDate: ws,
+              label: isThisWeek ? 'This Week' : `${fmtDay(ws)} – ${fmtDay(we)}`,
+              isThisWeek,
+              transactions: [],
+            };
+          }
+          weekMap[key].transactions.push(t);
+        });
+
+        // Sort newest week first
+        const weeks = Object.values(weekMap).sort((a, b) => b.wsDate - a.wsDate);
+
+        // Clamp weekTabValue in range
+        const safeWeekTab = Math.min(weekTabValue, weeks.length - 1);
+        const activeWeek = weeks[safeWeekTab];
+
+        // ── Date label helper for transactions within the selected week ──
+        const getDateLabel = (dateStr) => {
+          const d = new Date(dateStr); d.setHours(0, 0, 0, 0);
+          if (d.getTime() === todayDate.getTime()) return 'Today';
           if (d.getTime() === yesterday.getTime()) return 'Yesterday';
           return d.toLocaleDateString('en-IN', { weekday: 'short', day: '2-digit', month: 'short' });
         };
 
-        const groups = {};
-        transactions.forEach(t => {
+        // Group active week's transactions by date label (preserve date order newest-first)
+        const dateGroups = {};
+        activeWeek.transactions.forEach(t => {
           const lbl = getDateLabel(t.date);
-          if (!groups[lbl]) groups[lbl] = [];
-          groups[lbl].push(t);
+          if (!dateGroups[lbl]) dateGroups[lbl] = [];
+          dateGroups[lbl].push(t);
         });
+
+        // Week-level totals
+        const weekExpense = activeWeek.transactions.filter(t => t.type === 'expense').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+        const weekIncome  = activeWeek.transactions.filter(t => t.type === 'income' ).reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
 
         return (
           <Box>
-            {/* Header */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+            {/* ── Header ── */}
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.2 }}>
               <Typography sx={{ fontSize: '0.72rem', fontWeight: 700, color: '#374151', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Transactions
               </Typography>
               <Typography sx={{ fontSize: '0.68rem', color: '#9ca3af' }}>{transactions.length} total</Typography>
             </Box>
 
-            {Object.entries(groups).map(([dateLabel, dayTxns]) => {
-              const dayExpenses = dayTxns.filter(t => t.type === 'expense').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
-              const dayIncome = dayTxns.filter(t => t.type === 'income').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+            {/* ── Week Tab Pills (horizontal scroll) ── */}
+            <Box sx={{
+              display: 'flex', gap: '6px', overflowX: 'auto', mb: 1.2, pb: '4px',
+              '&::-webkit-scrollbar': { height: '3px' },
+              '&::-webkit-scrollbar-thumb': { bgcolor: '#d1d5db', borderRadius: '4px' },
+            }}>
+              {weeks.map((w, idx) => {
+                const active = idx === safeWeekTab;
+                return (
+                  <Box
+                    key={w.key}
+                    onClick={() => setWeekTabValue(idx)}
+                    sx={{
+                      flexShrink: 0,
+                      px: '10px', py: '5px',
+                      borderRadius: '20px',
+                      cursor: 'pointer',
+                      bgcolor: active ? '#212121' : '#f3f4f6',
+                      border: `1.5px solid ${active ? '#212121' : '#e5e7eb'}`,
+                      transition: 'all 0.15s ease',
+                      '&:active': { filter: 'brightness(0.9)' },
+                    }}
+                  >
+                    <Typography sx={{
+                      fontSize: '0.65rem', fontWeight: active ? 700 : 500,
+                      color: active ? '#fff' : '#374151',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {w.label}
+                    </Typography>
+                  </Box>
+                );
+              })}
+            </Box>
 
+            {/* ── Week summary strip ── */}
+            <Box sx={{
+              display: 'flex', gap: 2, mb: 1.5, px: '2px',
+              alignItems: 'center',
+            }}>
+              <Typography sx={{ fontSize: '0.68rem', color: '#9ca3af' }}>
+                {activeWeek.transactions.length} txn{activeWeek.transactions.length !== 1 ? 's' : ''}
+              </Typography>
+              {weekExpense > 0 && (
+                <Typography sx={{ fontSize: '0.70rem', fontWeight: 700, color: '#dc2626' }}>
+                  −{formatCurrency(weekExpense, 'INR')}
+                </Typography>
+              )}
+              {weekIncome > 0 && (
+                <Typography sx={{ fontSize: '0.70rem', fontWeight: 700, color: '#16a34a' }}>
+                  +{formatCurrency(weekIncome, 'INR')}
+                </Typography>
+              )}
+            </Box>
+
+            {/* ── Date-grouped transaction feed for active week ── */}
+            {Object.entries(dateGroups).map(([dateLabel, dayTxns]) => {
+              const dayExpenses = dayTxns.filter(t => t.type === 'expense').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+              const dayIncome  = dayTxns.filter(t => t.type === 'income' ).reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
               return (
                 <Box key={dateLabel} sx={{ mb: 1.5 }}>
-                  {/* Date group header */}
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: '2px', mb: '6px' }}>
                     <Typography sx={{ fontSize: '0.75rem', fontWeight: 700, color: '#6b7280' }}>{dateLabel}</Typography>
                     <Box sx={{ display: 'flex', gap: 1 }}>
@@ -3811,8 +3925,6 @@ function DailyExpenseLogPage() {
                       )}
                     </Box>
                   </Box>
-
-                  {/* Transaction rows */}
                   <Box sx={{ bgcolor: '#fff', borderRadius: '14px', border: '1px solid #e8ecf0', overflow: 'hidden' }}>
                     {dayTxns.map((t, idx) => (
                       <TransactionRow key={t.id} t={t} idx={idx} totalInGroup={dayTxns.length} onEdit={handleEditTransaction} onDelete={handleDeleteTransaction} />

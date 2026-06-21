@@ -21,7 +21,10 @@ export async function parseTransactionWithGemini(description, userId) {
     }
   }
 
+  const today = new Date().toISOString().split('T')[0];
   const prompt = `You are a financial transaction parser. Parse the following transaction description and extract structured data.
+
+Current date is: ${today}. Use this to resolve relative dates or two-digit years.
 
 Transaction: "${description}"
 
@@ -45,7 +48,8 @@ Rules:
 - ExpenseHead defaults to "Other" for expenses, "Salary" for income
 - TransactionDesc should be a brief, meaningful description (e.g., "BigMarket", "frying pan", "groceries", "taxi")
 - Payment mode defaults to "UPI"
-- Use today's date if not specified: ${new Date().toISOString().split('T')[0]}
+- Date Parsing Rule: Be extremely careful parsing two-digit years. In bank SMS messages (especially Indian banks like Axis, HDFC, ICICI, SBI), the date is formatted as DD-MM-YY or DD/MM/YY (e.g., "18-06-26" is Day=18, Month=06, Year=26, which translates to "2026-06-18"). Do NOT parse this as YY-MM-DD (e.g. 2018-06-26). If the day/year is ambiguous (e.g., "12-10-25"), assume DD-MM-YY format.
+- Use today's date if not specified: ${today}
 - Return ONLY the JSON object, no additional text or explanation`;
 
   try {
@@ -69,8 +73,12 @@ Rules:
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`Gemini API error: ${errorData.error?.message || response.statusText}`);
+      let errorMessage = response.statusText;
+      try {
+        const errorData = await response.json();
+        errorMessage = errorData.error?.message || errorMessage;
+      } catch (_) {}
+      throw new Error(`Gemini API error: ${errorMessage}`);
     }
 
     const data = await response.json();

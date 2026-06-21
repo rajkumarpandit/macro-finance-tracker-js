@@ -56,6 +56,21 @@ A React-based personal finance tracking application with Firebase backend for ma
    # This will start the client application
    \\\
 
+### 7. **Useful Firebase Commands**
+   \\\powershell
+   # Login to Firebase
+   npx firebase login
+
+   # List available Firebase projects
+   npx firebase projects:list
+
+   # Switch/set the active Firebase project
+   npx firebase use <project-id>
+
+   # Deploy the application
+   npm run deploy
+   \\\
+
 ## Technology Stack
 
 - **Frontend**: React.js, Material-UI
